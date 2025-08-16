@@ -2,7 +2,7 @@ import time
 import bpy
 from mathutils import Vector
 from typing import Dict, Set, List, Optional, Tuple, Callable
-from ..core.tile import WFCTile, WFCTileVariant, DIRECTIONS, tokenize
+from .tile import WFCTile, WFCTileVariant, DIRECTIONS, WFCTile
 
 def sockets_from_object(obj: bpy.types.Object) -> Dict[str, Set[str]]:
     sockets = {}
@@ -11,7 +11,7 @@ def sockets_from_object(obj: bpy.types.Object) -> Dict[str, Set[str]]:
         tokens = None
         for source in chain:
             if source and prop in source:
-                tokens = tokenize(source[prop])
+                tokens = WFCTile._tokenize(source[prop])
                 break
         if tokens is None:
             tokens = ["*"]

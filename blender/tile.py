@@ -14,12 +14,11 @@ DIRECTIONS = (
 
 class WFCTile:
 
-    def __init__(self, obj):
-        self.obj = obj
-        self.name = obj.name
-        self.sockets = self._get_tile_sockets()
-        self.weight = self._get_tile_weight()
-        self.allow_rot = self._get_tile_allow_rot()
+    def __init__(self, name, sockets=None, weight=1.0, allow_rot=True):
+        self.name = name
+        self.sockets = sockets if sockets is not None else {}
+        self.weight = weight
+        self.allow_rot = allow_rot
     
     def _get_tile_sockets(self):
         """Extract connection rules from Blender object"""
@@ -97,7 +96,7 @@ class WFCTileVariant:
         self.allow_rot = base.allow_rot
 
     @staticmethod
-    def _rotated_sockets(self, sockets, rot):
+    def _rotated_sockets(sockets, rot):
         out = {}
         # Map each original direction to its rotated target
         for i, attribute in enumerate(CARDINAL):

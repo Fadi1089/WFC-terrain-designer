@@ -3,8 +3,11 @@ import random
 import bpy
 from mathutils import Vector
 from typing import Dict
-from ..core.terrain_generator import generate
-from ..core.tile import WFCTileVariant
+
+from .terrain_generator import generate
+from .tile import WFCTileVariant
+
+# relative to this subpackage (`blender/`)
 from .blender_utils import (
     read_bases_from_collection,
     instantiate_variant,
@@ -14,6 +17,7 @@ from .blender_utils import (
 
 # Optional keymap for Add Props
 _keymaps = []
+
 
 class MARSWFC_OT_AddProps(bpy.types.Operator):
     bl_idname = "mars_wfc.add_props"
@@ -26,7 +30,7 @@ class MARSWFC_OT_AddProps(bpy.types.Operator):
             self.report({'WARNING'}, "Select at least one mesh object.")
             return {'CANCELLED'}
         for obj in sel:
-            for key in ("WFC_E","WFC_W","WFC_N","WFC_S","WFC_UP","WFC_DN"):
+            for key in ("WFC_E", "WFC_W", "WFC_N", "WFC_S", "WFC_UP", "WFC_DN"):
                 if key not in obj:
                     obj[key] = "*"
             if "WFC_WEIGHT" not in obj:
@@ -36,13 +40,18 @@ class MARSWFC_OT_AddProps(bpy.types.Operator):
         self.report({'INFO'}, f"Added WFC props to {len(sel)} object(s).")
         return {'FINISHED'}
 
+
 class MARSWFC_OT_Generate(bpy.types.Operator):
     bl_idname = "mars_wfc.generate"
     bl_label = "Generate Terrain"
     bl_options = {'REGISTER', 'UNDO'}
 
-    build_delay: bpy.props.FloatProperty(name="Build Step Delay (s)", default=0.02, min=0.0, max=0.5)
-    repair_delay: bpy.props.FloatProperty(name="Repair Step Delay (s)", default=0.02, min=0.0, max=0.5)
+    build_delay: bpy.props.FloatProperty(
+        name="Build Step Delay (s)", default=0.02, min=0.0, max=0.5
+    )
+    repair_delay: bpy.props.FloatProperty(
+        name="Repair Step Delay (s)", default=0.02, min=0.0, max=0.5
+    )
 
     def execute(self, context):
         cfg = context.scene.mars_wfc
@@ -57,7 +66,6 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             return {'CANCELLED'}
 
         rng = random.Random(cfg.random_seed if cfg.use_seed else None)
-        guidance = build_guidance_from_settings(cfg, [])  # variants filled later in step_callback init
 
         out_name = cfg.output_collection_name or "WFC_Terrain"
         out_coll = bpy.data.collections.get(out_name)
@@ -90,18 +98,21 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             bpy.context.view_layer.update()
             time.sleep(self.build_delay if phase == "build" else self.repair_delay)
 
+        # Build guidance (variants are filled later in the callback)
+        guidance = build_guidance_from_settings(cfg, [])
+
         result = generate(
             bases=bases,
             size=(cfg.size_x, cfg.size_y, cfg.size_z),
             rng=rng,
-            guidance=build_guidance_from_settings(cfg, []),  # temp None-like
+            guidance=guidance,
             step_callback=step_callback,
             post_repair_passes=cfg.post_repair_passes,
         )
 
         variants_holder["variants"] = result["variants"]
 
-        # If any placements were not visualized (e.g., zero delay), ensure they're instantiated
+        # Ensure any unvisualized placements are instantiated (e.g., zero delay)
         for (x, y, z, vi) in result["placements"]:
             idx = x + cfg.size_x * (y + cfg.size_y * z)
             if idx in inst_map:
@@ -111,11 +122,14 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             if src_obj is None:
                 continue
             instantiate_variant(out_coll, src_obj, variant, (x, y, z), cfg.cell_size)
+
         bpy.context.view_layer.update()
         self.report({'INFO'}, f"Generated {len(result['placements'])} tiles in '{out_coll.name}'.")
         return {'FINISHED'}
 
+
 classes = (MARSWFC_OT_Generate, MARSWFC_OT_AddProps)
+
 
 def register_keymaps():
     wm = bpy.context.window_manager
@@ -124,6 +138,7 @@ def register_keymaps():
     km = wm.keyconfigs.addon.keymaps.new(name='3D View', space_type='VIEW_3D')
     kmi = km.keymap_items.new(MARSWFC_OT_AddProps.bl_idname, type='W', value='PRESS', alt=True, shift=True)
     _keymaps.append((km, kmi))
+
 
 def unregister_keymaps():
     for km, kmi in _keymaps:
