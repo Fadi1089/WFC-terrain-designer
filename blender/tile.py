@@ -1,107 +1,200 @@
-# tile.py
+# tile.py - Wave Function Collapse (WFC) Tile System
+# This file defines the core tile classes used in the WFC algorithm for procedural terrain generation
+
+# Dictionary mapping each direction to its opposite direction
+# Used to check if tiles can connect to each other
 OPPOSITE = {"EAST": "WEST", "WEST": "EAST", "NORTH": "SOUTH", "SOUTH": "NORTH", "UP": "DOWN", "DOWN": "UP"}
 
+# List of cardinal directions that can be rotated (horizontal plane only)
+# UP and DOWN are not included because they don't rotate with the tile
 CARDINAL = ["NORTH", "EAST", "SOUTH", "WEST"]
 
+# Tuple defining all 6 possible connection directions for a tile
+# Each entry contains: (direction_name, 3D_vector, blender_property_name)
+# The 3D vector represents the offset in that direction
+# The property name is what gets stored in Blender objects (e.g., "WFC_E" for East)
 DIRECTIONS = (
-    ("EAST",  (1, 0, 0),  "WFC_E"),
-    ("WEST",  (-1, 0, 0), "WFC_W"),
-    ("NORTH", (0, 1, 0),  "WFC_N"),
-    ("SOUTH", (0, -1, 0), "WFC_S"),
-    ("UP",    (0, 0, 1),  "WFC_UP"),
-    ("DOWN",  (0, 0, -1), "WFC_DN"),
+    ("EAST",  (1, 0, 0),  "WFC_E"),   # Right direction (+X)
+    ("WEST",  (-1, 0, 0), "WFC_W"),   # Left direction (-X)
+    ("NORTH", (0, 1, 0),  "WFC_N"),   # Forward direction (+Y)
+    ("SOUTH", (0, -1, 0), "WFC_S"),   # Backward direction (-Y)
+    ("UP",    (0, 0, 1),  "WFC_UP"),  # Upward direction (+Z)
+    ("DOWN",  (0, 0, -1), "WFC_DN"),  # Downward direction (-Z)
 )
 
 class WFCTile:
+    """
+    Represents a single tile in the Wave Function Collapse system.
+    Each tile defines connection rules, weight, and rotation properties.
+    """
 
     def __init__(self, name, sockets=None, weight=1.0, allow_rot=True):
+        """
+        Initialize a WFC tile.
+        
+        Args:
+            name: String identifier for the tile
+            sockets: Dictionary mapping directions to connection tokens (e.g., {"EAST": ["road", "grass"]})
+            weight: Probability weight for tile placement (higher = more likely)
+            allow_rot: Whether this tile can be rotated during generation
+        """
         self.name = name
         self.sockets = sockets if sockets is not None else {}
         self.weight = weight
         self.allow_rot = allow_rot
     
     def _get_tile_sockets(self):
-        """Extract connection rules from Blender object"""
+        """
+        Extract connection rules from Blender object.
+        This method reads the WFC properties from a Blender object to determine
+        what this tile can connect to in each direction.
+        """
         sockets = {}
+        # Check both the object's data and the object itself for WFC properties
         source_chain = (getattr(self.obj, "data", None), self.obj)
         
-        for dir_name, _, prop in self.DIRECTIONS:
+        # For each possible direction, extract the connection tokens
+        for dir_name, _, prop in DIRECTIONS:
             tokens = None
+            # Look for the property in either the object's data or the object itself
             for source in source_chain:
                 if source and prop in source:
                     tokens = self._tokenize(source[prop])
                     break
+            # If no tokens found, use wildcard "*" (connects to anything)
             if tokens is None:
                 tokens = ["*"]
             sockets[dir_name] = set(tokens)
         return sockets
     
     def _get_tile_weight(self):
-        """Get tile placement weight"""
+        """
+        Get tile placement weight from Blender object properties.
+        Weight determines how likely this tile is to be chosen during generation.
+        """
         weight = 1.0
+        # Check if weight is stored on the object itself
         if "WFC_WEIGHT" in self.obj:
             try:
                 weight = float(self.obj["WFC_WEIGHT"])
             except Exception:
                 pass
+        # Check if weight is stored on the object's data (mesh, etc.)
         elif hasattr(self.obj, "data") and self.obj.data and "WFC_WEIGHT" in self.obj.data:
             try:
                 weight = float(self.obj.data["WFC_WEIGHT"])
             except Exception:
                 pass
+        # Clamp weight between 0.01 and 10.0 to prevent extreme values
         return max(0.01, min(weight, 10.0))
     
     def _get_tile_allow_rot(self):
-        """Check if tile can be rotated"""
+        """
+        Check if tile can be rotated during generation.
+        Reads the WFC_ALLOW_ROT property from Blender object.
+        """
+        def _to_bool(x):
+            """Convert various input types to boolean"""
+            if isinstance(x, str):
+                return x.lower() not in ("0","false","no")
+            return bool(x)
+        
+        # Check if rotation is allowed on the object itself
         if "WFC_ALLOW_ROT" in self.obj:
-            v = self.obj["WFC_ALLOW_ROT"]
-            if isinstance(v, str):
-                return v.lower() not in ("0","false","no")
-            return bool(v)
+            return _to_bool(self.obj["WFC_ALLOW_ROT"])
+        # Check if rotation is allowed on the object's data
         if hasattr(self.obj, "data") and self.obj.data and "WFC_ALLOW_ROT" in self.obj.data:
-            v = self.obj.data["WFC_ALLOW_ROT"]
-            if isinstance(v, str):
-                return v.lower() not in ("0","false","no")
-            return bool(v)
+            return _to_bool(self.obj.data["WFC_ALLOW_ROT"])
+        # Default to allowing rotation
         return True
     
     @staticmethod
     def _tokenize(value):
-        """Parse socket values into tokens"""
+        """
+        Parse socket values into tokens.
+        Converts various input formats into a list of connection tokens.
+        
+        Args:
+            value: Input value (string, None, or other type)
+            
+        Returns:
+            List of token strings
+        """
         if value is None:
-            return ["*"]
+            return ["*"]  # Wildcard - connects to anything
         if isinstance(value, str):
+            # Split comma-separated values and clean them up
             parts = [p.strip() for p in value.split(",") if p.strip()]
             return parts if parts else ["*"]
+        # Convert other types to string
         return [str(value)]
     
     @staticmethod
     def sockets_compatible(tokens_a, tokens_b):
-        """Check if two sets of socket tokens are compatible"""
+        """
+        Check if two sets of socket tokens are compatible.
+        This determines whether two tiles can be placed adjacent to each other.
+        
+        Args:
+            tokens_a: First set of connection tokens
+            tokens_b: Second set of connection tokens
+            
+        Returns:
+            True if tiles can connect, False otherwise
+        """
+        # "NA" means "Not Allowed" - these tiles can never connect
         if "NA" in tokens_a or "NA" in tokens_b:
             return False
+        # "*" is a wildcard - connects to anything
         if "*" in tokens_a or "*" in tokens_b:
             return True
+        # Check if there's any overlap between the token sets
         return not set(tokens_a).isdisjoint(set(tokens_b))
 
 
 class WFCTileVariant:
+    """
+    Represents a rotated variant of a base tile.
+    When a tile allows rotation, the WFC algorithm creates variants for each rotation.
+    """
 
     def __init__(self, base: 'WFCTile', rot: int):
+        """
+        Initialize a tile variant with a specific rotation.
+        
+        Args:
+            base: The base WFCTile this variant is derived from
+            rot: Rotation index (0=0°, 1=90°, 2=180°, 3=270°)
+        """
         self.base = base
-        self.rot = rot % 4
-        self.name = f"{base.name}_rot{self.rot}"
+        self.rot = rot % 4  # Ensure rotation is 0-3
+        self.name = f"{base.name}_rot{self.rot}"  # Create unique name for this variant
+        # Calculate rotated socket connections
         self.sockets = self._rotated_sockets(base.sockets, self.rot)
         self.weight = base.weight
         self.allow_rot = base.allow_rot
 
     @staticmethod
     def _rotated_sockets(sockets, rot):
+        """
+        Calculate socket connections for a rotated tile.
+        Rotates the horizontal connections (NORTH, EAST, SOUTH, WEST) while
+        keeping vertical connections (UP, DOWN) unchanged.
+        
+        Args:
+            sockets: Original socket connections from base tile
+            rot: Rotation index (0-3)
+            
+        Returns:
+            Dictionary of rotated socket connections
+        """
         out = {}
-        # Map each original direction to its rotated target
+        # Map each original cardinal direction to its rotated target
+        # For example: NORTH becomes EAST after 90° rotation
         for i, attribute in enumerate(CARDINAL):
             target = CARDINAL[(i + rot) % 4]
             out[target] = set(sockets[attribute])
+        # UP and DOWN don't change with rotation
         out["UP"] = set(sockets["UP"])
         out["DOWN"] = set(sockets["DOWN"])
         return out

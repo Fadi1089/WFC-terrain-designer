@@ -1,7 +1,7 @@
 import random
 from collections import deque
 from typing import Callable, List, Dict, Set, Optional
-from .tile import OPPOSITE, DIRECTIONS, WFCTile
+from .tile import OPPOSITE, DIRECTIONS, WFCTileVariant
 
 def build_adjacency(tiles) -> Dict[str, Dict[int, Set[int]]]:
     allowed = {d[0]: {i: set() for i in range(len(tiles))} for d in DIRECTIONS}
