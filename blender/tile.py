@@ -147,50 +147,62 @@ class WFCTile:
         # Check if there's any overlap between the token sets
         return not set(tokens_a).isdisjoint(set(tokens_b))
 
-
-class WFCTileVariant:
+class WFCTileVariant(WFCTile):
     """
     Represents a rotated variant of a base tile.
-    When a tile allows rotation, the WFC algorithm creates variants for each rotation.
+    Variants are fully-formed tiles whose sockets are pre-rotated, so they can be
+    treated exactly like WFCTile in the WFC pipeline.
     """
 
     def __init__(self, base: 'WFCTile', rot: int):
         """
         Initialize a tile variant with a specific rotation.
-        
+
         Args:
             base: The base WFCTile this variant is derived from
             rot: Rotation index (0=0°, 1=90°, 2=180°, 3=270°)
         """
         self.base = base
-        self.rot = rot % 4  # Ensure rotation is 0-3
-        self.name = f"{base.name}_rot{self.rot}"  # Create unique name for this variant
-        # Calculate rotated socket connections
-        self.sockets = self._rotated_sockets(base.sockets, self.rot)
+        self.rot = rot % 4  # ensure 0..3
+
+        # Pre-rotate the sockets map so that cardinal faces move with the tile.
+        rotated = WFCTileVariant._rotate_sockets_map(base.sockets, self.rot)
+
+        # We intentionally do NOT call super().__init__ here to avoid re-reading
+        # Blender object data; we just set the fields expected elsewhere.
+        self.name = f"{base.name}_r{self.rot * 90}"
+        self.sockets = rotated
         self.weight = base.weight
-        self.allow_rot = base.allow_rot
+        # Variants themselves should not be rotated again by the generator.
+        self.allow_rot = False
 
     @staticmethod
-    def _rotated_sockets(sockets, rot):
+    def _rotate_sockets_map(sockets: dict, rot: int) -> dict:
         """
-        Calculate socket connections for a rotated tile.
-        Rotates the horizontal connections (NORTH, EAST, SOUTH, WEST) while
-        keeping vertical connections (UP, DOWN) unchanged.
-        
+        Rotate a sockets map by 90° * rot around Z, remapping the *keys* so that
+        the tile's local faces follow the rotation into global directions.
+
+        Example for rot=1 (90° CW): NORTH→EAST, EAST→SOUTH, SOUTH→WEST, WEST→NORTH.
+
+        UP/DOWN don't change.
+
         Args:
-            sockets: Original socket connections from base tile
-            rot: Rotation index (0-3)
-            
+            sockets: dict like {"NORTH": {...}, "EAST": {...}, ..., "UP": {...}, "DOWN": {...}}
+            rot: 0..3
+
         Returns:
-            Dictionary of rotated socket connections
+            New dict with remapped keys and copied token sets.
         """
+        rot = rot % 4
         out = {}
-        # Map each original cardinal direction to its rotated target
-        # For example: NORTH becomes EAST after 90° rotation
-        for i, attribute in enumerate(CARDINAL):
-            target = CARDINAL[(i + rot) % 4]
-            out[target] = set(sockets[attribute])
-        # UP and DOWN don't change with rotation
-        out["UP"] = set(sockets["UP"])
-        out["DOWN"] = set(sockets["DOWN"])
+
+        # Remap horizontal faces: each source face moves to its rotated destination.
+        for i, src in enumerate(CARDINAL):
+            dst = CARDINAL[(i + rot) % 4]
+            out[dst] = set(sockets.get(src, {"*"}))
+
+        # Vertical faces are invariant under Z-rotation.
+        out["UP"] = set(sockets.get("UP", {"*"}))
+        out["DOWN"] = set(sockets.get("DOWN", {"*"}))
+
         return out
