@@ -32,15 +32,16 @@ import bpy
 import importlib
 import traceback
 
-# --- relative imports into your existing subpackage ---
-from .blender.addon_operator import classes as _addon_classes, register_keymaps, unregister_keymaps
-from .blender.ui_manager import MarsWFCSettings, MARSWFC_PT_Panel
+# Load/reload all submodules FIRST (so we import fresh class objects)
 from .blender import developer_utils
-
-# hot-reload your submodules during development
 importlib.reload(developer_utils)
 _reload = "bpy" in locals()
 modules = developer_utils.setup_addon_modules(__path__, __name__, _reload)
+
+# Import the classes/operators/panels AFTER reloading the modules
+from .blender.addon_operator import classes as _addon_classes, register_keymaps, unregister_keymaps
+from .blender.ui_manager import MarsWFCSettings, MARSWFC_PT_Panel
+
 
 def register():
     try:

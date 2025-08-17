@@ -42,8 +42,9 @@ class WFCTile:
         self.sockets = sockets if sockets is not None else {}
         self.weight = weight
         self.allow_rot = allow_rot
-    
-    def _get_tile_sockets(self):
+
+    @staticmethod
+    def _get_tile_sockets(obj):
         """
         Extract connection rules from Blender object.
         This method reads the WFC properties from a Blender object to determine
@@ -51,7 +52,7 @@ class WFCTile:
         """
         sockets = {}
         # Check both the object's data and the object itself for WFC properties
-        source_chain = (getattr(self.obj, "data", None), self.obj)
+        source_chain = (getattr(obj, "data", None), obj)
         
         # For each possible direction, extract the connection tokens
         for dir_name, _, prop in DIRECTIONS:
@@ -59,7 +60,7 @@ class WFCTile:
             # Look for the property in either the object's data or the object itself
             for source in source_chain:
                 if source and prop in source:
-                    tokens = self._tokenize(source[prop])
+                    tokens = WFCTile._tokenize(source[prop])
                     break
             # If no tokens found, use wildcard "*" (connects to anything)
             if tokens is None:
@@ -67,28 +68,23 @@ class WFCTile:
             sockets[dir_name] = set(tokens)
         return sockets
     
-    def _get_tile_weight(self):
+    @staticmethod
+    def _get_tile_weight(obj):
         """
-        Get tile placement weight from Blender object properties.
+        Get tile placement weight from Blender object properties. Default to 1.0 if not found.
         Weight determines how likely this tile is to be chosen during generation.
         """
-        weight = 1.0
-        # Check if weight is stored on the object itself
-        if "WFC_WEIGHT" in self.obj:
-            try:
-                weight = float(self.obj["WFC_WEIGHT"])
-            except Exception:
-                pass
-        # Check if weight is stored on the object's data (mesh, etc.)
-        elif hasattr(self.obj, "data") and self.obj.data and "WFC_WEIGHT" in self.obj.data:
-            try:
-                weight = float(self.obj.data["WFC_WEIGHT"])
-            except Exception:
-                pass
-        # Clamp weight between 0.01 and 10.0 to prevent extreme values
-        return max(0.01, min(weight, 10.0))
+        chain = (getattr(obj, "data", None), obj)
+        for source in chain:
+            if source and "WFC_WEIGHT" in source:
+                try:
+                    return max(0.01, min(float(source["WFC_WEIGHT"]), 10.0))
+                except Exception:
+                    pass
+        return 1.0
     
-    def _get_tile_allow_rot(self):
+    @staticmethod
+    def _get_tile_allow_rot(obj):
         """
         Check if tile can be rotated during generation.
         Reads the WFC_ALLOW_ROT property from Blender object.
@@ -100,11 +96,11 @@ class WFCTile:
             return bool(x)
         
         # Check if rotation is allowed on the object itself
-        if "WFC_ALLOW_ROT" in self.obj:
-            return _to_bool(self.obj["WFC_ALLOW_ROT"])
+        if "WFC_ALLOW_ROT" in obj:
+            return _to_bool(obj["WFC_ALLOW_ROT"])
         # Check if rotation is allowed on the object's data
-        if hasattr(self.obj, "data") and self.obj.data and "WFC_ALLOW_ROT" in self.obj.data:
-            return _to_bool(self.obj.data["WFC_ALLOW_ROT"])
+        if hasattr(obj, "data") and obj.data and "WFC_ALLOW_ROT" in obj.data:
+            return _to_bool(obj.data["WFC_ALLOW_ROT"])
         # Default to allowing rotation
         return True
     

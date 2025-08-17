@@ -4,7 +4,7 @@ import bpy
 from mathutils import Vector
 from typing import Dict
 
-from .terrain_generator import generate
+from .terrain_generator import generate, create_variants
 from .tile import WFCTileVariant
 
 # relative to this subpackage (`blender/`)
@@ -97,9 +97,18 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
                 inst.rotation_euler[2] = variant.rot * (3.141592653589793 / 2.0)
             bpy.context.view_layer.update()
             time.sleep(self.build_delay if phase == "build" else self.repair_delay)
+            # COMMENT OUT the time.sleep, and Uncomment the following to get the UI to redraw without blocking the main thread
+            # Nudge the UI to redraw without blocking the main thread
+            #
+            # This is to get the UI to redraw without blocking the main thread
+            # try:
+            #     bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
+            # except Exception:
+            #     pass
 
-        # Build guidance (variants are filled later in the callback)
-        guidance = build_guidance_from_settings(cfg, [])
+        # Build guidance using the actual variants
+        variants = create_variants(bases)
+        guidance = build_guidance_from_settings(cfg, variants)
 
         result = generate(
             bases=bases,

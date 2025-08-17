@@ -1,8 +1,7 @@
-import time
 import bpy
 from mathutils import Vector
 from typing import Dict, Set, List, Optional, Tuple, Callable
-from .tile import WFCTile, WFCTileVariant, DIRECTIONS, WFCTile
+from .tile import WFCTile, WFCTileVariant, DIRECTIONS
 
 def sockets_from_object(obj: bpy.types.Object) -> Dict[str, Set[str]]:
     sockets = {}
@@ -62,7 +61,7 @@ def instantiate_variant(out_coll: bpy.types.Collection, src_obj: bpy.types.Objec
     return inst
 
 def update_instance(inst: bpy.types.Object, variant: WFCTileVariant):
-    inst.data = variant.base_obj_data if hasattr(variant, "base_obj_data") else inst.data
+    # Mesh data remains as-is; only the rotation is variant-specific here.
     inst.rotation_euler[2] = variant.rot * (3.141592653589793 / 2.0)
 
 def clear_collection(out_coll: bpy.types.Collection):

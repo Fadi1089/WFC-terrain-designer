@@ -1,7 +1,7 @@
 import random
 from collections import deque
 from typing import Callable, List, Dict, Set, Optional
-from .tile import OPPOSITE, DIRECTIONS, WFCTileVariant
+from .tile import OPPOSITE, DIRECTIONS, WFCTileVariant, WFCTile
 
 def build_adjacency(tiles) -> Dict[str, Dict[int, Set[int]]]:
     allowed = {d[0]: {i: set() for i in range(len(tiles))} for d in DIRECTIONS}
@@ -9,7 +9,11 @@ def build_adjacency(tiles) -> Dict[str, Dict[int, Set[int]]]:
         for j, tB in enumerate(tiles):
             for dir_name, _, _ in DIRECTIONS:
                 opp = OPPOSITE[dir_name]
-                if tA.sockets_compatible(tB.sockets.get(opp, {"*"})):
+                # Check A’s face in dir_name against B’s opposite face
+                if WFCTile.sockets_compatible(
+                    tA.sockets.get(dir_name, {"*"}),
+                    tB.sockets.get(opp, {"*"})
+                ):
                     allowed[dir_name][i].add(j)
     return allowed
 

@@ -12,9 +12,13 @@ class MarsWFCSettings(bpy.types.PropertyGroup):
     use_heightmap: bpy.props.BoolProperty(name="Use Heightmap Guidance", default=False)
     heightmap_mode: bpy.props.EnumProperty(name="Source", items=[('IMAGE','Image',''),('TEXTURE','Texture','')], default='IMAGE')
     heightmap_image: bpy.props.PointerProperty(name="Heightmap Image", type=bpy.types.Image)
+    # Only define if the legacy Texture type exists in this Blender build
+    if hasattr(bpy.types, "Texture"):
+        heightmap_texture: bpy.props.PointerProperty(name="Heightmap Texture", type=bpy.types.Texture)
     heightmap_influence: bpy.props.FloatProperty(name="Heightmap Influence", default=1.0, min=0.0, max=5.0)
     post_repair_passes: bpy.props.IntProperty(name="Post-Repair Passes", default=1, min=0, max=10)
     clear_output: bpy.props.BoolProperty(name="Clear Output", default=True)
+    
 
 class MARSWFC_PT_Panel(bpy.types.Panel):
     bl_label = "Mars WFC"
