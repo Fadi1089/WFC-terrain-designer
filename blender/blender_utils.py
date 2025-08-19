@@ -133,17 +133,39 @@ def read_bases_from_collection(coll: bpy.types.Collection) -> List[WFCTile]:
         raise ValueError("Selected collection has no mesh objects.")
     return tiles
 
-def instantiate_variant(out_coll: bpy.types.Collection, src_obj: bpy.types.Object, variant: WFCTileVariant, pos: Tuple[int, int, int], cell_size: float) -> bpy.types.Object:
-    x, y, z = pos
-    # Prefer a pre-rotated physical asset if present
-    rot_name = {0: "", 1: "_r90", 2: "_r180", 3: "_r270"}[variant.rot]
-    src_name = variant.base.name + rot_name
-    src = bpy.data.objects.get(src_name) or src_obj
-    inst = src.copy()
-    inst.data = src.data
-    inst.location = Vector((x * cell_size, y * cell_size, z * cell_size))
-    # Do not override rotation: the chosen source already carries it (if a rotated asset exists)
+def instantiate_variant(
+    out_coll: bpy.types.Collection,
+    src_obj: bpy.types.Object,
+    variant: WFCTileVariant,
+    pos: Tuple[float, float, float],
+) -> bpy.types.Object:
+    # Make an object copy and ensure it has its own mesh datablock.
+    inst = src_obj.copy()
+    if getattr(src_obj, "data", None) is not None:
+        inst.data = src_obj.data.copy()  # real mesh copy so the object actually exists
+
+    # Link to the output collection before touching visibility/selection.
+    if inst.name in bpy.data.objects:
+        # Ensure we don't keep stale links
+        for c in inst.users_collection:
+            try:
+                c.objects.unlink(inst)
+            except Exception:
+                pass
     out_coll.objects.link(inst)
+
+    # Transform for this variant.
+    inst.location = Vector(pos)
+    inst.rotation_euler[2] = variant.rot * (3.141592653589793 / 2.0)
+    inst.name = f"{src_obj.name}_r{variant.rot}_{int(inst.as_pointer())}"
+
+    # Hide in the viewport AFTER creation so it doesn't overlap visually.
+    # (Use the explicit active-object call you asked for.)
+    bpy.context.view_layer.objects.active = inst
+    inst.select_set(True)
+    bpy.context.active_object.hide_set(True)   # viewport only
+    inst.hide_render = False                   # still renderable if you unhide for rendering
+
     return inst
 
 def update_instance(inst: bpy.types.Object, variant: WFCTileVariant):

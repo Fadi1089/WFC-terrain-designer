@@ -9,7 +9,7 @@ def build_adjacency(tiles) -> Dict[str, Dict[int, Set[int]]]:
         for j, tB in enumerate(tiles):
             for dir_name, _, _ in DIRECTIONS:
                 opp = OPPOSITE[dir_name]
-                # Check A’s face in dir_name against B’s opposite face
+                # Compare A’s face in dir_name with B’s opposite face
                 if WFCTile.sockets_compatible(
                     tA.sockets.get(dir_name, {"*"}),
                     tB.sockets.get(opp, {"*"})
