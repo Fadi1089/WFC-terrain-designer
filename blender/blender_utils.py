@@ -1,7 +1,89 @@
 import bpy
+import math
 from mathutils import Vector
 from typing import Dict, Set, List, Optional, Tuple, Callable
 from .tile import WFCTile, WFCTileVariant, DIRECTIONS
+
+# --- helpers for physical, pre-rotated asset variants ---
+_DIR_TO_PROP = {d: p for (d, _, p) in DIRECTIONS}
+_CARDINAL = ["NORTH", "EAST", "SOUTH", "WEST"]
+_ROT_SUFFIX = {0: "", 1: "_r90", 2: "_r180", 3: "_r270"}
+
+def _rotate_cardinal_dir(dir_name: str, rot: int) -> str:
+    """Return the direction name after rot (0..3) 90° steps clockwise."""
+    if dir_name not in _CARDINAL:
+        return dir_name
+    i = _CARDINAL.index(dir_name)
+    return _CARDINAL[(i + (rot % 4)) % 4]
+
+def _read_socket_props(obj: bpy.types.ID) -> dict:
+    """Read WFC_* socket tokens from an object or data-block into a dict by DIR name."""
+    sockets = {}
+    for dir_name, _, prop in DIRECTIONS:
+        if prop in obj:
+            sockets[dir_name] = WFCTile._tokenize(obj[prop])
+    return sockets
+
+def _write_socket_props(obj: bpy.types.ID, sockets_by_dir: dict) -> None:
+    """Write WFC_* socket tokens into an object (string form, comma-joined)."""
+    for dir_name, _, prop in DIRECTIONS:
+        tokens = sockets_by_dir.get(dir_name, ["*"])
+        obj[prop] = ",".join(tokens) if isinstance(tokens, (list, tuple, set)) else str(tokens)
+
+def _rotated_sockets_dict(orig: dict, rot: int) -> dict:
+    """Rotate a sockets dict keyed by DIR names, remapping keys (UP/DOWN unchanged)."""
+    out = {}
+    for dir_name in _CARDINAL:
+        out[_rotate_cardinal_dir(dir_name, rot)] = list(orig.get(dir_name, ["*"]))
+    out["UP"]   = list(orig.get("UP",   ["*"]))
+    out["DOWN"] = list(orig.get("DOWN", ["*"]))
+    return out
+
+def create_rotated_variations_in_collection(coll: bpy.types.Collection) -> int:
+    """
+    For every MESH in `coll` that has WFC_ALLOW_ROT true, create three hidden duplicates
+    at the same location: +90, +180, +270 (Z). Also rotate their socket properties
+    accordingly. Returns the number of new objects created.
+    """
+    created = 0
+    meshes = [o for o in coll.all_objects if o.type == 'MESH']
+    for base in meshes:
+        if not allow_rot_from_object(base):
+            continue
+
+        # Prefer properties from the object first; fall back to data
+        sockets_obj  = _read_socket_props(base)
+        if not sockets_obj and getattr(base, "data", None):
+            sockets_obj = _read_socket_props(base.data)
+
+        for rot in (1, 2, 3):
+            dup = base.copy()
+            dup.data = base.data  # share mesh
+            dup.name = f"{base.name}{_ROT_SUFFIX[rot]}"
+            dup.location = base.location
+            dup.rotation_euler = base.rotation_euler.copy()
+            dup.rotation_euler.z += rot * (math.pi / 2.0)
+
+            # Write rotated sockets onto the OBJECT (explicit and consistent place)
+            rotated = _rotated_sockets_dict(sockets_obj, rot)
+            _write_socket_props(dup, rotated)
+            # Carry over weight; disable further rotation on these variants
+            if "WFC_WEIGHT" in base:
+                dup["WFC_WEIGHT"] = base["WFC_WEIGHT"]
+            elif getattr(base, "data", None) and "WFC_WEIGHT" in base.data:
+                dup["WFC_WEIGHT"] = base.data["WFC_WEIGHT"]
+            dup["WFC_ALLOW_ROT"] = False
+
+            # Hide for convenience
+            dup.hide_render = True
+            try:
+                dup.hide_set(True)
+            except Exception:
+                dup.hide_viewport = True  # fallback for older versions
+
+            coll.objects.link(dup)
+            created += 1
+    return created
 
 def sockets_from_object(obj: bpy.types.Object) -> Dict[str, Set[str]]:
     sockets = {}
@@ -53,10 +135,14 @@ def read_bases_from_collection(coll: bpy.types.Collection) -> List[WFCTile]:
 
 def instantiate_variant(out_coll: bpy.types.Collection, src_obj: bpy.types.Object, variant: WFCTileVariant, pos: Tuple[int, int, int], cell_size: float) -> bpy.types.Object:
     x, y, z = pos
-    inst = src_obj.copy()
-    inst.data = src_obj.data
+    # Prefer a pre-rotated physical asset if present
+    rot_name = {0: "", 1: "_r90", 2: "_r180", 3: "_r270"}[variant.rot]
+    src_name = variant.base.name + rot_name
+    src = bpy.data.objects.get(src_name) or src_obj
+    inst = src.copy()
+    inst.data = src.data
     inst.location = Vector((x * cell_size, y * cell_size, z * cell_size))
-    inst.rotation_euler[2] = variant.rot * (3.141592653589793 / 2.0)
+    # Do not override rotation: the chosen source already carries it (if a rotated asset exists)
     out_coll.objects.link(inst)
     return inst
 

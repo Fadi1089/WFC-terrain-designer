@@ -62,3 +62,5 @@ class MARSWFC_PT_Panel(bpy.types.Panel):
         layout.operator("mars_wfc.generate", icon='MESH_GRID')
         layout.separator()
         layout.operator("mars_wfc.add_props", icon='PLUS')
+        layout.separator()
+        layout.operator("mars_wfc.create_variations", icon='DUPLICATE')

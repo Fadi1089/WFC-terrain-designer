@@ -13,7 +13,28 @@ from .blender_utils import (
     instantiate_variant,
     clear_collection,
     build_guidance_from_settings,
+    create_rotated_variations_in_collection
 )
+
+class MARSWFC_OT_CreateVariations(bpy.types.Operator):
+    bl_idname = "mars_wfc.create_variations"
+    bl_label = "Create Tile Variations"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        cfg = context.scene.mars_wfc
+        coll = cfg.source_collection
+        if coll is None:
+            self.report({'ERROR'}, "Pick a source Collection containing your modular tiles.")
+            return {'CANCELLED'}
+        try:
+            created = create_rotated_variations_in_collection(coll)
+        except Exception as e:
+            self.report({'ERROR'}, f"Variation build failed: {e}")
+            return {'CANCELLED'}
+        bpy.context.view_layer.update()
+        self.report({'INFO'}, f"Created {created} rotated variation object(s).")
+        return {'FINISHED'}
 
 # Optional keymap for Add Props
 _keymaps = []
@@ -94,7 +115,7 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             else:
                 inst = inst_map[idx]
                 inst.location = Vector((x * cs, y * cs, z * cs))
-                inst.rotation_euler[2] = variant.rot * (3.141592653589793 / 2.0)
+                # inst.rotation_euler[2] = variant.rot * (3.141592653589793 / 2.0)
             bpy.context.view_layer.update()
             time.sleep(self.build_delay if phase == "build" else self.repair_delay)
             # COMMENT OUT the time.sleep, and Uncomment the following to get the UI to redraw without blocking the main thread
@@ -137,7 +158,7 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (MARSWFC_OT_Generate, MARSWFC_OT_AddProps)
+classes = (MARSWFC_OT_Generate, MARSWFC_OT_AddProps, MARSWFC_OT_CreateVariations)
 
 
 def register_keymaps():
