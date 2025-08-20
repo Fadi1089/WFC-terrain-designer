@@ -9,35 +9,76 @@ _DIR_TO_PROP = {d: p for (d, _, p) in DIRECTIONS}
 _CARDINAL = ["NORTH", "EAST", "SOUTH", "WEST"]
 _ROT_SUFFIX = {0: "", 1: "_r90", 2: "_r180", 3: "_r270"}
 
-def _rotate_cardinal_dir(dir_name: str, rot: int) -> str:
-    """Return the direction name after rot (0..3) 90° steps clockwise."""
-    if dir_name not in _CARDINAL:
-        return dir_name
-    i = _CARDINAL.index(dir_name)
-    return _CARDINAL[(i + (rot % 4)) % 4]
+def _rotate_cardinal_dir(direction: str, rot: int) -> str:
+    """Return the direction after rot (0..3) 90° steps CCW (+Z in Blender)."""
+    if direction not in _CARDINAL:
+        return direction
+    i = _CARDINAL.index(direction)
+    # CCW: positive rot moves index backwards around CARDINAL
+    return _CARDINAL[(i - (rot % 4)) % 4]
+
+# Helpers to rotate single-letter suffixes like ..._N/_E/_S/_W in token strings
+_LETTER_TO_DIR = {"S": "SOUTH", "E": "EAST", "N": "NORTH", "W": "WEST"}
+_DIR_TO_LETTER = {v: k for k, v in _LETTER_TO_DIR.items()}
+
+def _rotate_dir_letter(letter: str, rot: int) -> str:
+    up = letter.upper()
+    if up not in _LETTER_TO_DIR:
+        return letter
+    dir_name = _LETTER_TO_DIR[up]
+    rotated_dir = _rotate_cardinal_dir(dir_name, rot)
+    rotated_letter = _DIR_TO_LETTER[rotated_dir]
+    return rotated_letter if letter.isupper() else rotated_letter.lower()
+
+def _rotate_token_suffix(token: str, rot: int) -> str:
+    # Match last underscore followed by a single cardinal letter, e.g. "slope_E"
+    if "_" not in token:
+        return token
+    head, tail = token.rsplit("_", 1)
+    if len(tail) == 1 and tail.upper() in _LETTER_TO_DIR:
+        return f"{head}_{_rotate_dir_letter(tail, rot)}"
+    return token
 
 def _read_socket_props(obj: bpy.types.ID) -> dict:
     """Read WFC_* socket tokens from an object or data-block into a dict by DIR name."""
     sockets = {}
-    for dir_name, _, prop in DIRECTIONS:
+    for direction, _, prop in DIRECTIONS:
         if prop in obj:
-            sockets[dir_name] = WFCTile._tokenize(obj[prop])
+            sockets[direction] = WFCTile._tokenize(obj[prop])
     return sockets
 
 def _write_sockets_onto_object(obj: bpy.types.ID, sockets_by_dir: dict) -> None:
     """Write WFC_* socket tokens into an object (string form, comma-joined)."""
-    for dir_name, _, prop in DIRECTIONS:
-        tokens = sockets_by_dir.get(dir_name, ["*"])
+    for direction, _, prop in DIRECTIONS:
+        tokens = sockets_by_dir.get(direction, ["*"])
         obj[prop] = ",".join(tokens) if isinstance(tokens, (list, tuple, set)) else str(tokens)
 
-def _rotate_sockets(orig: dict, rot: int) -> dict:
-    """Rotate a sockets dict keyed by DIR names, remapping keys (UP/DOWN unchanged)."""
-    out = {}
-    for dir_name in _CARDINAL:
-        out[_rotate_cardinal_dir(dir_name, rot)] = list(orig.get(dir_name, ["*"]))
-    out["UP"]   = list(orig.get("UP",   ["*"]))
-    out["DOWN"] = list(orig.get("DOWN", ["*"]))
-    return out
+def _rotate_sockets(original: dict, rot: int) -> dict:
+    """Rotate sockets to match a +rot (CCW, +Z) mesh rotation and rotate directional suffixes in tokens.
+
+    After rotating the mesh by +rot*90°, the tokens that face a given world
+    direction D come from the original direction rotate(D, +rot).
+    Also, any token ending with _[N|E|S|W] will have that letter rotated.
+    """
+    rot = rot % 4
+    result = {}
+
+    for direction in _CARDINAL:
+        # use CW = -rot because we’re finding the original source that ends up at `direction`
+        src = _rotate_cardinal_dir(direction, -rot)
+        tokens = original.get(src, ["*"])
+        # Rotate any directional suffixes in the token itself by the actual mesh rotation (+rot)
+        rotated_tokens = [
+            _rotate_token_suffix(t, rot) if isinstance(t, str) else t for t in (tokens if isinstance(tokens, (list, tuple, set)) else [tokens])
+        ]
+        result[direction] = list(rotated_tokens)
+
+    up_tokens = original.get("UP", ["*"])
+    dn_tokens = original.get("DOWN", ["*"])
+    result["UP"] = list(up_tokens if isinstance(up_tokens, (list, tuple, set)) else [up_tokens])
+    result["DOWN"] = list(dn_tokens if isinstance(dn_tokens, (list, tuple, set)) else [dn_tokens])
+
+    return result
 
 def create_rotated_variations_in_collection(coll: bpy.types.Collection) -> int:
     """
@@ -74,23 +115,19 @@ def create_rotated_variations_in_collection(coll: bpy.types.Collection) -> int:
                 dup["WFC_WEIGHT"] = mesh.data["WFC_WEIGHT"]
             dup["WFC_ALLOW_ROT"] = False
 
-            # Hide for convenience
-            try:
-                # Hiding in viewport uses the monitor screen icon.
-                # This may not be visible unless you select it from the filter icon in the top right corner.
-                dup.hide_viewport = True
-            except Exception:
-                print("failed to hide tile variant")
-                pass
+            dup.hide_viewport = False
 
+            # Link the duplicate to the collection
             coll.objects.link(dup)
             created += 1
     return created
 
 def sockets_from_object(obj: bpy.types.Object) -> Dict[str, Set[str]]:
     sockets = {}
-    chain = (getattr(obj, "data", None), obj)
-    for dir_name, _, prop in DIRECTIONS:
+    # prefer object-level properties first because rotated variants
+    # write their rotated tokens onto the OBJECT. Fall back to mesh data.
+    chain = (obj, getattr(obj, "data", None))
+    for direction, _, prop in DIRECTIONS:
         tokens = None
         for source in chain:
             if source and prop in source:
@@ -98,7 +135,7 @@ def sockets_from_object(obj: bpy.types.Object) -> Dict[str, Set[str]]:
                 break
         if tokens is None:
             tokens = ["*"]
-        sockets[dir_name] = set(tokens)
+        sockets[direction] = set(tokens)
     return sockets
 
 def weight_from_object(obj: bpy.types.Object) -> float:
@@ -135,51 +172,22 @@ def read_bases_from_collection(coll: bpy.types.Collection) -> List[WFCTile]:
         raise ValueError("Selected collection has no mesh objects.")
     return tiles
 
-def instantiate_variant(
-    out_coll: bpy.types.Collection,
-    src_obj: bpy.types.Object,
-    variant: WFCTileVariant,
-    pos: Tuple[float, float, float],
-    cell_size: float
-) -> bpy.types.Object:
-
-   # Guard clauses
-    if src_obj is None or src_obj.type != 'MESH' or src_obj.data is None:
-        print(f"instantiate_variant: invalid source object '{getattr(src_obj, 'name', None)}'")
-        return None
-    if out_coll is None:
-        print("instantiate_variant: invalid output collection")
-        return None
-
-    # Duplicate object; SHARE the mesh (lighter than copying mesh data)
+def instantiate_variant(out_coll: bpy.types.Collection, src_obj: bpy.types.Object, variant: WFCTileVariant, pos: Tuple[int, int, int], cell_size: float) -> bpy.types.Object:
+    x, y, z = pos
     inst = src_obj.copy()
-    inst.data = src_obj.data
-    print(f"instantiate_variant: {inst.name} copied successfully")
-
-    # Ensure visible in viewport/render
+    inst.data = src_obj.data  # share mesh; orientation is baked on the object
+    inst.location = Vector((x * cell_size, y * cell_size, z * cell_size))
+    # Preserve the baked orientation of the source object (no extra rotation)
     try:
-        inst.hide_set(False)
+        inst.rotation_euler = src_obj.rotation_euler.copy()
     except Exception:
         pass
-    inst.hide_viewport = False
-    inst.hide_render = False
-
-    # Place and rotate (90° steps around Z)
-    x, y, z = pos
-    inst.location = Vector((x * cell_size, y * cell_size, z * cell_size))
-    inst.rotation_euler.z = (variant.rot % 4) * (math.pi / 2.0)
-
-    # Link to target collection
     out_coll.objects.link(inst)
-
-    # Update depsgraph so transforms/visibility take effect
-    bpy.context.view_layer.update()
-
     return inst
 
 def update_instance(inst_variant: bpy.types.Object, variant: WFCTileVariant):
-    # Mesh data remains as-is; only the rotation is variant-specific here.
-    inst_variant.rotation_euler[2] = variant.rot * (math.pi / 2.0)
+    # Keep whatever baked rotation the inst already has (no runtime rotation).
+    return
 
 def clear_collection(out_coll: bpy.types.Collection):
     for obj in list(out_coll.objects):

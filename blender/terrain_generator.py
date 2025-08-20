@@ -4,14 +4,9 @@ from .tile import WFCTile, WFCTileVariant
 from .wfc_algorithm import WFCGrid, build_adjacency
 
 def create_variants(bases: List[WFCTile]) -> List[WFCTileVariant]:
-    out = []
-    for b in bases:
-        if b.allow_rot:
-            for r in (0, 1, 2, 3):
-                out.append(WFCTileVariant(b, r))
-        else:
-            out.append(WFCTileVariant(b, 0))
-    return out
+    # Identity mapping: each base becomes a single variant with rot=0.
+    # Your pre-rotated/duplicated objects are separate bases already.
+    return [WFCTileVariant(b, 0) for b in bases]
 
 def generate(
     bases: List[WFCTile],

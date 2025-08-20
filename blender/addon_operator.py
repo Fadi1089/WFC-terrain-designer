@@ -94,7 +94,9 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             out_coll = bpy.data.collections.new(out_name)
             context.scene.collection.children.link(out_coll)
         if cfg.clear_output:
-            clear_collection(out_coll)
+            for obj in list(out_coll.objects):
+                out_coll.objects.unlink(obj)
+                bpy.data.objects.remove(obj, do_unlink=True)
 
         inst_map: Dict[int, bpy.types.Object] = {}
         variants_holder = {"variants": None}  # late bind
@@ -115,13 +117,18 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             else:
                 inst = inst_map[idx]
                 inst.location = Vector((x * cs, y * cs, z * cs))
-                # inst.rotation_euler[2] = variant.rot * (3.141592653589793 / 2.0)
+                # Keep instance’s baked rotation; no runtime rotation applied
+                try:
+                    inst.rotation_euler = src_obj.rotation_euler.copy()
+                except Exception:
+                    pass
+            
             bpy.context.view_layer.update()
             time.sleep(self.build_delay if phase == "build" else self.repair_delay)
-            # COMMENT OUT the time.sleep, and Uncomment the following to get the UI to redraw without blocking the main thread
-            # Nudge the UI to redraw without blocking the main thread
-            #
-            # This is to get the UI to redraw without blocking the main thread
+            bpy.context.view_layer.update()
+
+            # (Optional) avoid blocking sleeps; use redraw if you still want viz
+
             # try:
             #     bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
             # except Exception:
@@ -152,6 +159,7 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             if src_obj is None:
                 continue
             instantiate_variant(out_coll, src_obj, variant, (x, y, z), cfg.cell_size)
+            # No extra rotation; instantiate_variant preserves the baked one
 
         bpy.context.view_layer.update()
         self.report({'INFO'}, f"Generated {len(result['placements'])} tiles in '{out_coll.name}'.")
