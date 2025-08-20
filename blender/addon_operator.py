@@ -70,9 +70,6 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
     build_delay: bpy.props.FloatProperty(
         name="Build Step Delay (s)", default=0.02, min=0.0, max=0.5
     )
-    repair_delay: bpy.props.FloatProperty(
-        name="Repair Step Delay (s)", default=0.02, min=0.0, max=0.5
-    )
 
     def execute(self, context):
         cfg = context.scene.mars_wfc
@@ -124,7 +121,7 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
                     pass
             
             bpy.context.view_layer.update()
-            time.sleep(self.build_delay if phase == "build" else self.repair_delay)
+            time.sleep(self.build_delay)
             bpy.context.view_layer.update()
 
             # (Optional) avoid blocking sleeps; use redraw if you still want viz
@@ -143,8 +140,7 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             size=(cfg.size_x, cfg.size_y, cfg.size_z),
             rng=rng,
             guidance=guidance,
-            step_callback=step_callback,
-            post_repair_passes=cfg.post_repair_passes,
+            step_callback=step_callback
         )
 
         variants_holder["variants"] = result["variants"]

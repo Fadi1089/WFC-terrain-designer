@@ -16,7 +16,6 @@ class MarsWFCSettings(bpy.types.PropertyGroup):
     if hasattr(bpy.types, "Texture"):
         heightmap_texture: bpy.props.PointerProperty(name="Heightmap Texture", type=bpy.types.Texture)
     heightmap_influence: bpy.props.FloatProperty(name="Heightmap Influence", default=1.0, min=0.0, max=5.0)
-    post_repair_passes: bpy.props.IntProperty(name="Post-Repair Passes", default=1, min=0, max=10)
     clear_output: bpy.props.BoolProperty(name="Clear Output", default=True)
     
 
@@ -55,9 +54,6 @@ class MARSWFC_PT_Panel(bpy.types.Panel):
         if cfg.heightmap_mode == 'IMAGE':
             col2.prop(cfg, "heightmap_image")
         col2.prop(cfg, "heightmap_influence")
-        post = layout.box()
-        post.label(text="Post-Repair")
-        post.prop(cfg, "post_repair_passes")
         layout.prop(cfg, "clear_output")
         layout.operator("mars_wfc.generate", icon='MESH_GRID')
         layout.separator()

@@ -13,8 +13,7 @@ def generate(
     size: Tuple[int, int, int],
     rng: random.Random,
     guidance: Optional[Callable] = None,
-    step_callback: Optional[Callable] = None,
-    post_repair_passes: int = 1,
+    step_callback: Optional[Callable] = None
 ) -> Dict:
     sx, sy, sz = size
     variants = create_variants(bases)
@@ -33,43 +32,6 @@ def generate(
             step_callback("build", (x, y, z), vi)
         if not grid.propagate():
             break
-
-    total = sx * sy * sz
-    if post_repair_passes > 0:
-        for _ in range(post_repair_passes):
-            fixes = 0
-            for idx in range(total):
-                if grid.collapsed[idx] is None:
-                    continue
-                x = idx % grid.sx
-                y = (idx // grid.sx) % grid.sy
-                z = idx // (grid.sx * grid.sy)
-                cur = next(iter(grid.cells[idx]))
-                allowed = set(range(len(variants)))
-                for dir_name, (nx, ny, nz) in grid.neighbors(x, y, z):
-                    nidx = grid.index(nx, ny, nz)
-                    if grid.collapsed[nidx] is None:
-                        continue
-                    ncur = next(iter(grid.cells[nidx]))
-                    allowed &= adjacency[dir_name][ncur]
-                    if not allowed:
-                        break
-                if allowed and cur not in allowed:
-                    options = list(allowed)
-                    weights = [variants[o].weight for o in options]
-                    if guidance is not None:
-                        weights = [w * max(0.0001, float(guidance(x, y, z, o))) for w, o in zip(weights, options)]
-                    if sum(weights) <= 0:
-                        weights = [1.0 for _ in weights]
-                    choice = rng.choices(options, weights=weights, k=1)[0]
-                    if choice != cur:
-                        grid.cells[idx] = {choice}
-                        grid.collapsed[idx] = choice
-                        fixes += 1
-                        if step_callback:
-                            step_callback("repair", (x, y, z), choice)
-            if fixes == 0:
-                break
 
     placements = []
     for z in range(sz):
