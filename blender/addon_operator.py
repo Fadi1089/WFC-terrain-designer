@@ -1,4 +1,5 @@
 import time
+from typing import Tuple
 import random
 import bpy
 from mathutils import Vector
@@ -23,12 +24,12 @@ class MARSWFC_OT_CreateVariations(bpy.types.Operator):
 
     def execute(self, context):
         cfg = context.scene.mars_wfc
-        coll = cfg.source_collection
-        if coll is None:
+        collection = cfg.source_collection
+        if collection is None:
             self.report({'ERROR'}, "Pick a source Collection containing your modular tiles.")
             return {'CANCELLED'}
         try:
-            created = create_rotated_variations_in_collection(coll)
+            created = create_rotated_variations_in_collection(collection)
         except Exception as e:
             self.report({'ERROR'}, f"Variation build failed: {e}")
             return {'CANCELLED'}
@@ -68,69 +69,98 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     build_delay: bpy.props.FloatProperty(
-        name="Build Step Delay (s)", default=0.02, min=0.0, max=0.5
+        name="Build Step Delay (s)", default=0.1, min=0.0, max=0.5
     )
 
     def execute(self, context):
+        # Get configuration from UI
         cfg = context.scene.mars_wfc
-        coll = cfg.source_collection
-        if coll is None:
+
+        # Get the source collection from the UI
+        collection = cfg.source_collection
+
+        # Validate source collection exists
+        if collection is None:
             self.report({'ERROR'}, "Pick a source Collection containing your modular tiles.")
             return {'CANCELLED'}
+
+        # Read all tiles from the collection
         try:
-            bases = read_bases_from_collection(coll)
+            bases = read_bases_from_collection(collection)
         except Exception as e:
-            self.report({'ERROR'}, f"Tile read failed: {e}")
+            self.report({'ERROR'}, f"Tile reading failed. Identified the following cause: {e}")
             return {'CANCELLED'}
 
+        # Create a random number generator to be used later in the generate function
         rng = random.Random(cfg.random_seed if cfg.use_seed else None)
-
+        
+        # If no name is provided, use "WFC_Terrain" as default
         out_name = cfg.output_collection_name or "WFC_Terrain"
+
+        # Get the output collection name from the UI
         out_coll = bpy.data.collections.get(out_name)
+
+        # If the output collection does not exist, create it
         if out_coll is None:
             out_coll = bpy.data.collections.new(out_name)
             context.scene.collection.children.link(out_coll)
+
+        # If the clear output option is enabled, clear the output collection every time the generate function is called
         if cfg.clear_output:
             for obj in list(out_coll.objects):
                 out_coll.objects.unlink(obj)
                 bpy.data.objects.remove(obj, do_unlink=True)
 
-        inst_map: Dict[int, bpy.types.Object] = {}
-        variants_holder = {"variants": None}  # late bind
+        # Create a mapping dictionary that keeps track of which 3D objects have been created,
+        # and at which grid positions during the terrain generation process.
+        instantiated_objects_map: Dict[int, bpy.types.Object] = {}
 
-        def step_callback(phase, pos, vi):
-            if variants_holder["variants"] is None:
+        # Create a dictionary to store the variants (WFCTileVariant objects)
+        variants_list = []   # late bind
+
+        # a callback function to be called at each step of the generation process
+        def step_callback(pos: Tuple[int, int, int], variant_index: int):
+            # If the variants are not yet created, return None
+            if variants_list is None:
                 return
+
+            # Get the coordinates (position) of the tile
             x, y, z = pos
-            idx = x + cfg.size_x * (y + cfg.size_y * z)
-            variant: WFCTileVariant = variants_holder["variants"][vi]
+
+            # Calculate the index of the tile in the grid's flattened 1D array
+            tile_idx = x + cfg.size_x * (y + cfg.size_y * z)
+
+            # Get the variant from the variants_list using the variant_index
+            variant: WFCTileVariant = variants_list[variant_index]
+
+            # Get the source object from the variant
             src_obj = bpy.data.objects.get(variant.base.name)
+
+            # If the source object is not found, return None
             if src_obj is None:
                 return
-            cs = cfg.cell_size
-            if idx not in inst_map:
-                inst = instantiate_variant(out_coll, src_obj, variant, (x, y, z), cs)
-                inst_map[idx] = inst
+
+            # Get the cell size from the configuration (the size of the tiles in the grid)
+            cell_size = cfg.cell_size
+
+            # If the tile is not yet instantiated, instantiate it
+            if tile_idx not in instantiated_objects_map:
+                instantiated_object = instantiate_variant(out_coll, src_obj, variant, (x, y, z), cell_size)
+                instantiated_objects_map[tile_idx] = instantiated_object
+            # Else if the tile is already instantiated, update its location and rotation
             else:
-                inst = inst_map[idx]
-                inst.location = Vector((x * cs, y * cs, z * cs))
-                # Keep instance’s baked rotation; no runtime rotation applied
-                try:
-                    inst.rotation_euler = src_obj.rotation_euler.copy()
-                except Exception:
-                    pass
+                instantiated_object = instantiated_objects_map[tile_idx]
+                instantiated_object.location = Vector((x * cell_size, y * cell_size, z * cell_size))
             
+            # Update the view layer and wait for the build step delay
             bpy.context.view_layer.update()
             time.sleep(self.build_delay)
             bpy.context.view_layer.update()
 
-            # (Optional) avoid blocking sleeps; use redraw if you still want viz
-
-            # try:
-            #     bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
-            # except Exception:
-            #     pass
-
+        # TODO: Continue here
+        # 1. Continue commenting here
+        # 2. Add a button to the UI to save the generated terrain as a .fbx file
+        
         # Build guidance using the actual variants
         variants = create_variants(bases)
         guidance = build_guidance_from_settings(cfg, variants)
@@ -143,14 +173,14 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             step_callback=step_callback
         )
 
-        variants_holder["variants"] = result["variants"]
+        variants_list["variants"] = result["variants"]
 
         # Ensure any unvisualized placements are instantiated (e.g., zero delay)
-        for (x, y, z, vi) in result["placements"]:
-            idx = x + cfg.size_x * (y + cfg.size_y * z)
-            if idx in inst_map:
+        for (x, y, z, var) in result["placements"]:
+            tile_idx = x + cfg.size_x * (y + cfg.size_y * z)
+            if tile_idx in instantiated_objects_map:
                 continue
-            variant: WFCTileVariant = result["variants"][vi]
+            variant: WFCTileVariant = result["variants"][var]
             src_obj = bpy.data.objects.get(variant.base.name)
             if src_obj is None:
                 continue

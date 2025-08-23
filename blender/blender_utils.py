@@ -160,14 +160,21 @@ def allow_rot_from_object(obj: bpy.types.Object) -> bool:
         return _to_bool(obj.data["WFC_ALLOW_ROT"])
     return True
 
+# Creates and returns a list of WFCTile objects from the collection
 def read_bases_from_collection(coll: bpy.types.Collection) -> List[WFCTile]:
     tiles = []
+
+    # Reads all mesh objects from the selected collection
     for obj in coll.all_objects:
         if obj.type == 'MESH':
+            # Extracts connection rules, weights, and rotation settings from each object
             sockets = sockets_from_object(obj)
             weight = weight_from_object(obj)
             allow_rot = allow_rot_from_object(obj)
+            # Creates a WFCTile object from the extracted information
             tiles.append(WFCTile(obj.name, sockets, weight, allow_rot))
+
+    # Tries to return the list of WFCTile objects
     if not tiles:
         raise ValueError("Selected collection has no mesh objects.")
     return tiles

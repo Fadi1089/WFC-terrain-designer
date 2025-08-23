@@ -29,7 +29,7 @@ def generate(
             y = (idx // grid.sx) % grid.sy
             z = idx // (grid.sx * grid.sy)
             vi = next(iter(grid.cells[idx]))
-            step_callback("build", (x, y, z), vi)
+            step_callback((x, y, z), vi)
         if not grid.propagate():
             break
 
