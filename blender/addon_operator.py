@@ -1,5 +1,5 @@
 import time
-from typing import Tuple
+from typing import Tuple, Callable, Optional
 import random
 import bpy
 from mathutils import Vector
@@ -116,9 +116,7 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
         instantiated_objects_map: Dict[int, bpy.types.Object] = {}
 
         # Create a dictionary to store the variants (WFCTileVariant objects)
-        # Build guidance using the actual variants
         variants = create_variants(bases)
-        guidance = build_guidance_from_settings(cfg, variants)
 
         # a callback function to be called at each step of the generation process
         def step_callback(pos: Tuple[int, int, int], variant_idx: int):
@@ -163,10 +161,16 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             time.sleep(self.build_delay)
             bpy.context.view_layer.update()
 
-        # TODO: Continue here
-        # 1. Continue commenting here
-        # 2. Add a button to the UI to save the generated terrain as a .fbx file
+        # TODO : Add a button to the UI to save the generated terrain as a .fbx file
 
+        '''
+        a function that controls where and how tiles are placed during terrain generation
+        based on a heightmap (either an image or texture).
+        Essentially a "smart placement system" that makes the terrain follow elevation patterns.
+        '''
+        guidance: Optional[Callable] = build_guidance_from_settings(cfg, variants)
+
+        # Generate the terrain using the WFC algorithm
         result = generate(
             bases=bases,
             size=(cfg.size_x, cfg.size_y, cfg.size_z),
@@ -175,7 +179,6 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             step_callback=step_callback
         )
 
-        # Ensure any unvisualized placements are instantiated (e.g., zero delay)
         for (x, y, z, var) in result["placements"]:
             tile_idx = x + cfg.size_x * (y + cfg.size_y * z)
             if tile_idx in instantiated_objects_map:
@@ -185,7 +188,6 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             if src_obj is None:
                 continue
             instantiate_variant(out_coll, src_obj, variant, (x, y, z), cfg.cell_size)
-            # No extra rotation; instantiate_variant preserves the baked one
 
         bpy.context.view_layer.update()
         self.report({'INFO'}, f"Generated {len(result['placements'])} tiles in '{out_coll.name}'.")

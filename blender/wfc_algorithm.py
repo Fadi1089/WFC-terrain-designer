@@ -23,7 +23,7 @@ class WFCGrid:
         self.tiles = tiles
         self.adj = adjacency
         self.rng = rng
-        self.guidance = guidance
+        self.guidance: Optional[Callable] = guidance
         ntiles = len(tiles)
         self.cells: List[Set[int]] = [set(range(ntiles)) for _ in range(size_x * size_y * size_z)]
         self.collapsed: List[Optional[int]] = [None] * (size_x * size_y * size_z)
