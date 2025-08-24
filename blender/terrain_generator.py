@@ -4,22 +4,27 @@ from .tile import WFCTile
 from .wfc_algorithm import WFCGrid, build_adjacency
 
 def generate(
-    bases: List[WFCTile],
+    tiles: List[WFCTile],
     size: Tuple[int, int, int],
     rng: random.Random,
     guidance: Optional[Callable] = None,
     step_callback: Optional[Callable] = None
 ) -> Dict:
+    # size is the size of the terrain in tiles
     sx, sy, sz = size
-    adjacency = build_adjacency(bases)
-    grid = WFCGrid(sx, sy, sz, bases, adjacency, rng, guidance)
+    # adjacency is the adjacency matrix of the tiles (the possible connections between tiles)
+    adjacency = build_adjacency(tiles)
+    # Creates a WFC grid initialized with all possible tiles in every cell
+    grid = WFCGrid(sx, sy, sz, tiles, adjacency, rng, guidance)
 
+    # While the grid is not solved, collapse a random cell and propagate the information
+    # If the propagation fails, break the loop
     while not grid.is_solved():
         idx = grid.collapse_random()
         if idx is None:
             break
         if step_callback:
-            x = idx % grid.sx
+            x = idx % grid.sx 
             y = (idx // grid.sx) % grid.sy
             z = idx // (grid.sx * grid.sy)
             tile_idx = next(iter(grid.cells[idx]))
@@ -38,6 +43,6 @@ def generate(
                 placements.append((x, y, z, tile_idx))
     return {
         "placements": placements,
-        "bases": bases,
+        "tiles": tiles,
         "size": (sx, sy, sz),
     }

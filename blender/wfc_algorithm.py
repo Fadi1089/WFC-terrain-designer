@@ -1,20 +1,26 @@
 import random
 from collections import deque
-from typing import Callable, List, Dict, Set, Optional
+from typing import Callable, List, Dict, Set, Optional, Generator, Tuple
 from .tile import OPPOSITE, DIRECTIONS, WFCTile
 
-def build_adjacency(tiles) -> Dict[str, Dict[int, Set[int]]]:
+def build_adjacency(tiles: List[WFCTile]) -> Dict[str, Dict[int, Set[int]]]:
     allowed = {d[0]: {i: set() for i in range(len(tiles))} for d in DIRECTIONS}
-    for i, tA in enumerate(tiles):
-        for j, tB in enumerate(tiles):
-            for dir_name, _, _ in DIRECTIONS:
-                opp = OPPOSITE[dir_name]
-                # Compare A’s face in dir_name with B’s opposite face
-                if WFCTile.sockets_compatible(
-                    tA.sockets.get(dir_name, {"*"}),
-                    tB.sockets.get(opp, {"*"})
-                ):
-                    allowed[dir_name][i].add(j)
+    for i, tile_A in enumerate(tiles):            # for each source tile
+        for j, tile_B in enumerate(tiles):        # for each neighbor tile
+            for direction, _, _ in DIRECTIONS: # for each direction
+                opposite_direction = OPPOSITE[direction]      # get the opposite direction
+                
+                # Get socket tokens for both tiles
+                socket_a = tile_A.sockets.get(direction, {"*"})
+                socket_b = tile_B.sockets.get(opposite_direction, {"*"})
+                
+                # If the tiles are not allowed to connect, skip them
+                if "NA" in socket_a or "NA" in socket_b:
+                    continue
+
+                # Check if tiles are compatible for this direction
+                if WFCTile.sockets_compatible(socket_a, socket_b):
+                    allowed[direction][i].add(j)
     return allowed
 
 class WFCGrid:
@@ -25,47 +31,110 @@ class WFCGrid:
         self.rng = rng
         self.guidance: Optional[Callable] = guidance
         ntiles = len(tiles)
+
+        # makes a list of sets of all the tiles for each cell in the grid 
+        # (each cell is a set of all the tiles that can be placed in that cell)
+        # there are size_x * size_y * size_z cells in the grid (represented by the for loop)
         self.cells: List[Set[int]] = [set(range(ntiles)) for _ in range(size_x * size_y * size_z)]
+
+        # makes a list of None for each cell in the grid (represented by the for loop)
+        # (each cell is a None if it has not been collapsed yet... think schrodinger's cat ^^)
         self.collapsed: List[Optional[int]] = [None] * (size_x * size_y * size_z)
 
     def index(self, x, y, z) -> int:
+        '''
+        Returns the index of the cell in a given x, y, z position in the grid
+        '''
         return x + self.sx * (y + self.sy * z)
 
     def in_bounds(self, x, y, z) -> bool:
+        '''
+        Returns True if the given x, y, z position is within the bounds of the grid
+        '''
         return 0 <= x < self.sx and 0 <= y < self.sy and 0 <= z < self.sz
 
-    def neighbors(self, x, y, z):
-        for dir_name, vec, _ in DIRECTIONS:
-            dx, dy, dz = vec
+    def neighbors(self, x, y, z) -> Generator[Tuple[str, Tuple[int, int, int]], None, None]:
+        '''
+        Returns a generator of the neighbors of the given x, y, z position in the grid
+        '''
+        for direction, vector, _ in DIRECTIONS:
+            dx, dy, dz = vector
             nx, ny, nz = x + dx, y + dy, z + dz
             if self.in_bounds(nx, ny, nz):
-                yield dir_name, (nx, ny, nz)
+                yield direction, (nx, ny, nz)
 
-    def entropy_cell_indices(self):
+    # Finds all cells with the lowest entropy (fewest possible tile options)
+    # Returns a list of cell indices that have the minimum number of choices
+    # This helps the WFC algorithm choose the easiest cells to collapse next
+    # (like in a sudoku puzzle, you want to fill in the cells with the least possible options first)
+    def _entropy_cell_indices(self) -> List[int]:
+        '''
+        Returns a list of the indices of the cells with the lowest entropy
+        '''
+        # min_len is the length of the smallest set of propable tiles
         min_len = None
+
+        # candidates is a list of the indices of the cells with the smallest set of propable tiles
         candidates = []
-        for idx, opts in enumerate(self.cells):
+
+        # for each cell in the grid:
+        # if the cell is not collapsed, AND the number of propable tiles is greater than 1,
+        # Add the index of the cell to the candidates list.
+        # If the number of propable tiles is equal to the current min_len, add the index of the cell to the candidates list.
+        # If the number of propable tiles is less than the current min_len, update min_len and reset the candidates list to only include the current cell.
+        for idx, propable_tiles in enumerate(self.cells):
+            # get the number of propable tiles for the current cell
+            num_of_propable_tiles = len(propable_tiles)
+
+            # if the cell is collapsed, skip it
             if self.collapsed[idx] is not None:
                 continue
-            l = len(opts)
-            if l <= 1:
+
+            # if the number of propable tiles is less than or equal to 1, skip it (it's already collapsed)
+            if num_of_propable_tiles <= 1:
                 continue
-            if (min_len is None) or (l < min_len):
-                min_len = l
+
+            # if the number of propable tiles is less than the current min_len
+            # Update min_len and reset the candidates list to only include the current cell.
+            if (min_len is None) or (num_of_propable_tiles < min_len):
+                min_len = num_of_propable_tiles
                 candidates = [idx]
-            elif l == min_len:
+
+            # if the number of propable tiles is equal to the current min_len
+            # add the index of the cell to the candidates list
+            elif num_of_propable_tiles == min_len:
                 candidates.append(idx)
+
+        # return the list of candidates
         return candidates
 
-    def collapse_random(self):
-        candidates = self.entropy_cell_indices()
+    def collapse_random(self) -> Optional[int]:
+        '''
+        Collapses a random cell in the grid into one of its possible tiles
+        '''
+        # get the list of cells with the lowest entropy
+        candidates = self._entropy_cell_indices()
+
+        # if there are no cells with the lowest entropy,
+        # then get the list of all cells that are not collapsed and have more than one possible tile
         if not candidates:
-            candidates = [i for i, opts in enumerate(self.cells) if self.collapsed[i] is None and len(opts) > 1]
+            candidates = [i for i, propable_tiles in enumerate(self.cells) if self.collapsed[i] is None and len(propable_tiles) > 1]
+
+            # if there are STILL no cells with the lowest entropy,
+            # then return None
             if not candidates:
                 return None
+
+        # choose a random cell from the list of candidates
         idx = self.rng.choice(candidates)
+
+        # get the list of possible tiles for the chosen cell
         options = list(self.cells[idx])
+
+        # get the weights for each possible tile
         weights = [self.tiles[o].weight for o in options]
+
+        # if there is guidance, adjust the weights based on the guidance
         if self.guidance is not None:
             x = idx % self.sx
             y = (idx // self.sx) % self.sy
@@ -76,6 +145,8 @@ class WFCGrid:
         choice = self.rng.choices(options, weights=weights, k=1)[0]
         self.cells[idx] = {choice}
         self.collapsed[idx] = choice
+
+        # return the index of the tile (that's been chosen based on the weights) for the randdomly chosen cell
         return idx
 
     def propagate(self) -> bool:
@@ -88,7 +159,7 @@ class WFCGrid:
             x = idx % self.sx
             y = (idx // self.sx) % self.sy
             z = idx // (self.sx * self.sy)
-            for dir_name, (nx, ny, nz) in self.neighbors(x, y, z):
+            for direction, (nx, ny, nz) in self.neighbors(x, y, z):
                 nidx = self.index(nx, ny, nz)
                 before = set(self.cells[nidx])
                 if not before:
@@ -96,7 +167,7 @@ class WFCGrid:
                 possible_here = self.cells[idx]
                 allowed_for_neighbor = set()
                 for th in possible_here:
-                    allowed_for_neighbor.update(self.adj[dir_name][th])
+                    allowed_for_neighbor.update(self.adj[direction][th])
                 newset = before.intersection(allowed_for_neighbor)
                 if not newset:
                     return False
@@ -109,4 +180,8 @@ class WFCGrid:
         return True
 
     def is_solved(self) -> bool:
-        return all(len(opts) == 1 for opts in self.cells)
+        '''
+        Returns True if the grid is solved (all cells have only one option, and therefore the grid is fully collapsed)
+        '''
+        # checks if the length of all the sets (each cell) is 1 (all cells have only one option as a tile)
+        return all(len(propable_tiles) == 1 for propable_tiles in self.cells)

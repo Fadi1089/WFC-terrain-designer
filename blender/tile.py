@@ -128,8 +128,8 @@ class WFCTile:
     @staticmethod
     def sockets_compatible(tokens_a, tokens_b):
         """
-        Check if two sets of socket tokens are compatible.
-        This determines whether two tiles can be placed adjacent to each other.
+        Determines whether two tiles can be placed adjacent to each other
+        by checking if there's any overlap between their token sets
         
         Args:
             tokens_a: First set of connection tokens
@@ -138,11 +138,8 @@ class WFCTile:
         Returns:
             True if tiles can connect, False otherwise
         """
-        # "NA" means "Not Allowed" - these tiles can never connect
-        if "NA" in tokens_a or "NA" in tokens_b:
-            return False
         # "*" is a wildcard - connects to anything
         if "*" in tokens_a or "*" in tokens_b:
             return True
-        # Check if there's any overlap between the token sets
+        # Return True if there's any overlap between the token sets
         return not set(tokens_a).isdisjoint(set(tokens_b))

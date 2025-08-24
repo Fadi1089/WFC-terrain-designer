@@ -205,6 +205,11 @@ def clear_collection(out_coll: bpy.types.Collection):
             pass
 
 def build_guidance_from_settings(cfg, tiles: List[WFCTile]) -> Optional[Callable]:
+    '''
+    a function that controls where and how tiles are placed during terrain generation
+    based on a heightmap (either an image or texture).
+    Essentially a "smart placement system" that makes the terrain follow elevation patterns.
+    '''
     if not getattr(cfg, "use_heightmap", False):
         return None
     mode = getattr(cfg, "heightmap_mode", "IMAGE")
