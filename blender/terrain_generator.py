@@ -1,12 +1,7 @@
 from typing import Callable, Dict, List, Optional, Tuple
 import random
-from .tile import WFCTile, WFCTileVariant
+from .tile import WFCTile
 from .wfc_algorithm import WFCGrid, build_adjacency
-
-def create_variants(bases: List[WFCTile]) -> List[WFCTileVariant]:
-    # Identity mapping: each base becomes a single variant with rot=0.
-    # Your pre-rotated/duplicated objects are separate bases already.
-    return [WFCTileVariant(b, 0) for b in bases]
 
 def generate(
     bases: List[WFCTile],
@@ -16,9 +11,8 @@ def generate(
     step_callback: Optional[Callable] = None
 ) -> Dict:
     sx, sy, sz = size
-    variants = create_variants(bases)
-    adjacency = build_adjacency(variants)
-    grid = WFCGrid(sx, sy, sz, variants, adjacency, rng, guidance)
+    adjacency = build_adjacency(bases)
+    grid = WFCGrid(sx, sy, sz, bases, adjacency, rng, guidance)
 
     while not grid.is_solved():
         idx = grid.collapse_random()
@@ -28,8 +22,8 @@ def generate(
             x = idx % grid.sx
             y = (idx // grid.sx) % grid.sy
             z = idx // (grid.sx * grid.sy)
-            vi = next(iter(grid.cells[idx]))
-            step_callback((x, y, z), vi)
+            tile_idx = next(iter(grid.cells[idx]))
+            step_callback((x, y, z), tile_idx)
         if not grid.propagate():
             break
 
@@ -40,10 +34,10 @@ def generate(
                 idx = grid.index(x, y, z)
                 if grid.collapsed[idx] is None or len(grid.cells[idx]) != 1:
                     continue
-                vi = next(iter(grid.cells[idx]))
-                placements.append((x, y, z, vi))
+                tile_idx = next(iter(grid.cells[idx]))
+                placements.append((x, y, z, tile_idx))
     return {
         "placements": placements,
-        "variants": variants,
+        "bases": bases,
         "size": (sx, sy, sz),
     }

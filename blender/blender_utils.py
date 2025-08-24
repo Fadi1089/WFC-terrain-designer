@@ -2,7 +2,7 @@ import bpy
 import math
 from mathutils import Vector
 from typing import Dict, Set, List, Optional, Tuple, Callable
-from .tile import WFCTile, WFCTileVariant, DIRECTIONS
+from .tile import WFCTile, DIRECTIONS
 
 # --- helpers for physical, pre-rotated_sockets asset variants ---
 _DIR_TO_PROP = {d: p for (d, _, p) in DIRECTIONS}
@@ -179,7 +179,7 @@ def read_bases_from_collection(coll: bpy.types.Collection) -> List[WFCTile]:
         raise ValueError("Selected collection has no mesh objects.")
     return tiles
 
-def instantiate_variant(out_coll: bpy.types.Collection, src_obj: bpy.types.Object, variant: WFCTileVariant, pos: Tuple[int, int, int], cell_size: float) -> bpy.types.Object:
+def instantiate_variant(out_coll: bpy.types.Collection, src_obj: bpy.types.Object, tile: WFCTile, pos: Tuple[int, int, int], cell_size: float) -> bpy.types.Object:
     x, y, z = pos
     inst = src_obj.copy()
     inst.data = src_obj.data  # share mesh; orientation is baked on the object
@@ -192,7 +192,7 @@ def instantiate_variant(out_coll: bpy.types.Collection, src_obj: bpy.types.Objec
     out_coll.objects.link(inst)
     return inst
 
-def update_instance(inst_variant: bpy.types.Object, variant: WFCTileVariant):
+def update_instance(inst_tile: bpy.types.Object, tile: WFCTile):
     # Keep whatever baked rotation the inst already has (no runtime rotation).
     return
 
@@ -204,7 +204,7 @@ def clear_collection(out_coll: bpy.types.Collection):
         except Exception:
             pass
 
-def build_guidance_from_settings(cfg, variants: List[WFCTileVariant]) -> Optional[Callable]:
+def build_guidance_from_settings(cfg, tiles: List[WFCTile]) -> Optional[Callable]:
     if not getattr(cfg, "use_heightmap", False):
         return None
     mode = getattr(cfg, "heightmap_mode", "IMAGE")
@@ -243,9 +243,9 @@ def build_guidance_from_settings(cfg, variants: List[WFCTileVariant]) -> Optiona
     maxz = 1
     influence = float(getattr(cfg, "heightmap_influence", 1.0))
 
-    up_is_air = [('air' in v.sockets.get('UP', set())) for v in variants]
-    up_is_ground = [('ground' in v.sockets.get('UP', set())) for v in variants]
-    dn_is_ground = [('ground' in v.sockets.get('DOWN', set())) for v in variants]
+    up_is_air = [('air' in t.sockets.get('UP', set())) for t in tiles]
+    up_is_ground = [('ground' in t.sockets.get('UP', set())) for t in tiles]
+    dn_is_ground = [('ground' in t.sockets.get('DOWN', set())) for t in tiles]
 
     def sample01(u, v):
         if sampler_tex is not None:
@@ -256,7 +256,7 @@ def build_guidance_from_settings(cfg, variants: List[WFCTileVariant]) -> Optiona
             return sampler_img(u, v)
         return 0.0
 
-    def guidance(x, y, z, vi):
+    def guidance(x, y, z, tile_idx):
         nonlocal maxz
         if maxz < 1:
             maxz = 1
@@ -265,17 +265,17 @@ def build_guidance_from_settings(cfg, variants: List[WFCTileVariant]) -> Optiona
         target = sample01(u, v) * max(1, cfg.size_z - 1)
         if z < target - 0.5:
             m = 1.0
-            if up_is_air[vi]: m *= 0.1
-            if up_is_ground[vi]: m *= 1.5
-            if dn_is_ground[vi]: m *= 1.2
+            if up_is_air[tile_idx]: m *= 0.1
+            if up_is_ground[tile_idx]: m *= 1.5
+            if dn_is_ground[tile_idx]: m *= 1.2
         elif abs(z - target) <= 0.5:
             m = 1.0
-            if up_is_air[vi] and dn_is_ground[vi]: m *= 2.0
-            elif up_is_air[vi]: m *= 1.5
-            elif up_is_ground[vi]: m *= 0.6
+            if up_is_air[tile_idx] and dn_is_ground[tile_idx]: m *= 2.0
+            elif up_is_air[tile_idx]: m *= 1.5
+            elif up_is_ground[tile_idx]: m *= 0.6
         else:
             m = 0.15
-            if up_is_air[vi]: m *= 0.8
+            if up_is_air[tile_idx]: m *= 0.8
         return 1.0 + (m - 1.0) * influence
 
     return guidance

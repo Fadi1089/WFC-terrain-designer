@@ -5,14 +5,13 @@ import bpy
 from mathutils import Vector
 from typing import Dict
 
-from .terrain_generator import generate, create_variants
-from .tile import WFCTileVariant
+from .terrain_generator import generate
+from .tile import WFCTile
 
 # relative to this subpackage (`blender/`)
 from .blender_utils import (
     read_bases_from_collection,
     instantiate_variant,
-    clear_collection,
     build_guidance_from_settings,
     create_rotated_variations_in_collection
 )
@@ -21,6 +20,13 @@ class MARSWFC_OT_CreateVariations(bpy.types.Operator):
     bl_idname = "mars_wfc.create_variations"
     bl_label = "Create Tile Variations"
     bl_options = {"REGISTER", "UNDO"}
+
+    '''
+    tile_idx always means "which tile type"
+    grid_idx always means "which grid position"
+    tile always means "the WFCTile object"
+    bases always means "list of available tile types"
+    '''
 
     def execute(self, context):
         cfg = context.scene.mars_wfc
@@ -115,13 +121,10 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
         # and at which grid positions during the terrain generation process.
         instantiated_objects_map: Dict[int, bpy.types.Object] = {}
 
-        # Create a dictionary to store the variants (WFCTileVariant objects)
-        variants = create_variants(bases)
-
         # a callback function to be called at each step of the generation process
-        def step_callback(pos: Tuple[int, int, int], variant_idx: int):
-            # If the variants are not yet created, return None
-            if variants is None:
+        def step_callback(pos: Tuple[int, int, int], tile_idx: int):
+            # If the bases are not yet created, return None
+            if bases is None:
                 return
 
             # Get the coordinates (position) of the tile
@@ -131,14 +134,14 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             # Represents the physical position of the tile in the 3D grid
             # Is a unique identifier for each grid cell
             # Key in the instantiated_objects_map dictionary
-            tile_idx = x + cfg.size_x * (y + cfg.size_y * z)
+            grid_idx = x + cfg.size_x * (y + cfg.size_y * z)
 
-            # Get the tile variant from the variants using the variant_idx
-            # Not related to the tile_idx
-            variant: WFCTileVariant = variants[variant_idx]
+            # Get the tile from the bases using the tile_idx
+            # This represents which tile type was chosen for this position
+            tile: WFCTile = bases[tile_idx]
 
-            # Get the source object from the variant
-            src_obj = bpy.data.objects.get(variant.base.name)
+            # Get the source object from the tile
+            src_obj = bpy.data.objects.get(tile.name)
 
             # If the source object is not found, return None
             if src_obj is None:
@@ -148,12 +151,12 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             cell_size = cfg.cell_size
 
             # If the tile is not yet instantiated, instantiate it
-            if tile_idx not in instantiated_objects_map:
-                instantiated_object = instantiate_variant(out_coll, src_obj, variant, (x, y, z), cell_size)
-                instantiated_objects_map[tile_idx] = instantiated_object
+            if grid_idx not in instantiated_objects_map:
+                instantiated_object = instantiate_variant(out_coll, src_obj, tile, (x, y, z), cell_size)
+                instantiated_objects_map[grid_idx] = instantiated_object
             # Else if the tile is already instantiated, update its location and rotation
             else:
-                instantiated_object = instantiated_objects_map[tile_idx]
+                instantiated_object = instantiated_objects_map[grid_idx]
                 instantiated_object.location = Vector((x * cell_size, y * cell_size, z * cell_size))
             
             # Update the view layer and wait for the build step delay
@@ -168,7 +171,7 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
         based on a heightmap (either an image or texture).
         Essentially a "smart placement system" that makes the terrain follow elevation patterns.
         '''
-        guidance: Optional[Callable] = build_guidance_from_settings(cfg, variants)
+        guidance: Optional[Callable] = build_guidance_from_settings(cfg, bases)
 
         # Generate the terrain using the WFC algorithm
         result = generate(
@@ -179,15 +182,15 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             step_callback=step_callback
         )
 
-        for (x, y, z, var) in result["placements"]:
-            tile_idx = x + cfg.size_x * (y + cfg.size_y * z)
-            if tile_idx in instantiated_objects_map:
+        for (x, y, z, tile_idx) in result["placements"]:
+            grid_idx = x + cfg.size_x * (y + cfg.size_y * z)
+            if grid_idx in instantiated_objects_map:
                 continue
-            variant: WFCTileVariant = result["variants"][var]
-            src_obj = bpy.data.objects.get(variant.base.name)
+            tile: WFCTile = result["bases"][tile_idx]
+            src_obj = bpy.data.objects.get(tile.name)
             if src_obj is None:
                 continue
-            instantiate_variant(out_coll, src_obj, variant, (x, y, z), cfg.cell_size)
+            instantiate_variant(out_coll, src_obj, tile, (x, y, z), cfg.cell_size)
 
         bpy.context.view_layer.update()
         self.report({'INFO'}, f"Generated {len(result['placements'])} tiles in '{out_coll.name}'.")
