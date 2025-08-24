@@ -69,7 +69,7 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     build_delay: bpy.props.FloatProperty(
-        name="Build Step Delay (s)", default=0.1, min=0.0, max=0.5
+        name="Build Step Delay (s)", default=0.01, min=0.0, max=0.5
     )
 
     def execute(self, context):
@@ -84,7 +84,7 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             self.report({'ERROR'}, "Pick a source Collection containing your modular tiles.")
             return {'CANCELLED'}
 
-        # Read all tiles from the collection
+        # Read all tile objects from the collection
         try:
             bases = read_bases_from_collection(collection)
         except Exception as e:
@@ -116,22 +116,28 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
         instantiated_objects_map: Dict[int, bpy.types.Object] = {}
 
         # Create a dictionary to store the variants (WFCTileVariant objects)
-        variants_list = []   # late bind
+        # Build guidance using the actual variants
+        variants = create_variants(bases)
+        guidance = build_guidance_from_settings(cfg, variants)
 
         # a callback function to be called at each step of the generation process
-        def step_callback(pos: Tuple[int, int, int], variant_index: int):
+        def step_callback(pos: Tuple[int, int, int], variant_idx: int):
             # If the variants are not yet created, return None
-            if variants_list is None:
+            if variants is None:
                 return
 
             # Get the coordinates (position) of the tile
             x, y, z = pos
 
             # Calculate the index of the tile in the grid's flattened 1D array
+            # Represents the physical position of the tile in the 3D grid
+            # Is a unique identifier for each grid cell
+            # Key in the instantiated_objects_map dictionary
             tile_idx = x + cfg.size_x * (y + cfg.size_y * z)
 
-            # Get the variant from the variants_list using the variant_index
-            variant: WFCTileVariant = variants_list[variant_index]
+            # Get the tile variant from the variants using the variant_idx
+            # Not related to the tile_idx
+            variant: WFCTileVariant = variants[variant_idx]
 
             # Get the source object from the variant
             src_obj = bpy.data.objects.get(variant.base.name)
@@ -160,10 +166,6 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
         # TODO: Continue here
         # 1. Continue commenting here
         # 2. Add a button to the UI to save the generated terrain as a .fbx file
-        
-        # Build guidance using the actual variants
-        variants = create_variants(bases)
-        guidance = build_guidance_from_settings(cfg, variants)
 
         result = generate(
             bases=bases,
@@ -172,8 +174,6 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             guidance=guidance,
             step_callback=step_callback
         )
-
-        variants_list["variants"] = result["variants"]
 
         # Ensure any unvisualized placements are instantiated (e.g., zero delay)
         for (x, y, z, var) in result["placements"]:
