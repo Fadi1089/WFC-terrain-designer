@@ -16,17 +16,12 @@ from .blender_utils import (
     create_rotated_variations_in_collection
 )
 
+# class to create the rotated variations of every tile
+# in the source collection that has a WFC_ALLOW_ROT property set to True
 class MARSWFC_OT_CreateVariations(bpy.types.Operator):
     bl_idname = "mars_wfc.create_variations"
     bl_label = "Create Tile Variations"
     bl_options = {"REGISTER", "UNDO"}
-
-    '''
-    tile_idx always means "which tile type"
-    grid_idx always means "which grid position"
-    tile always means "the WFCTile object"
-    bases always means "list of available tile types"
-    '''
 
     def execute(self, context):
         cfg = context.scene.mars_wfc
@@ -46,11 +41,18 @@ class MARSWFC_OT_CreateVariations(bpy.types.Operator):
 # Optional keymap for Add Props
 _keymaps = []
 
-
+# class to add properties to the selected objects
 class MARSWFC_OT_AddProps(bpy.types.Operator):
     bl_idname = "mars_wfc.add_props"
     bl_label = "Add Mars WFC Properties to Selected"
     bl_options = {"REGISTER", "UNDO"}
+
+    '''
+    tile_idx always means "which tile type"
+    grid_idx always means "which grid position"
+    tile always means "the WFCTile object"
+    bases always means "list of available tile types"
+    '''
 
     def execute(self, context):
         sel = [o for o in context.selected_objects if o.type == 'MESH']
@@ -69,6 +71,7 @@ class MARSWFC_OT_AddProps(bpy.types.Operator):
         return {'FINISHED'}
 
 
+# class to generate the terrain
 class MARSWFC_OT_Generate(bpy.types.Operator):
     bl_idname = "mars_wfc.generate"
     bl_label = "Generate Terrain"
@@ -182,6 +185,10 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             step_callback=step_callback
         )
 
+        # Instantiate the tiles that were not instantiated during the generation process
+        # This is done to ensure that all tiles are instantiated
+        # This is necessary because the step_callback function is not called for all tiles
+        # and some tiles may not be instantiated if they are not in the guidance function
         for (x, y, z, tile_idx) in result["placements"]:
             grid_idx = x + cfg.size_x * (y + cfg.size_y * z)
             if grid_idx in instantiated_objects_map:
@@ -192,14 +199,15 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
                 continue
             instantiate_variant(out_coll, src_obj, tile, (x, y, z), cfg.cell_size)
 
+        # Update the view layer and wait for the build step delay
         bpy.context.view_layer.update()
         self.report({'INFO'}, f"Generated {len(result['placements'])} tiles in '{out_coll.name}'.")
         return {'FINISHED'}
 
-
+# Register the classes
 classes = (MARSWFC_OT_Generate, MARSWFC_OT_AddProps, MARSWFC_OT_CreateVariations)
 
-
+# Register the keymaps
 def register_keymaps():
     wm = bpy.context.window_manager
     if wm is None:
@@ -208,7 +216,7 @@ def register_keymaps():
     kmi = km.keymap_items.new(MARSWFC_OT_AddProps.bl_idname, type='W', value='PRESS', alt=True, shift=True)
     _keymaps.append((km, kmi))
 
-
+# Unregister the keymaps
 def unregister_keymaps():
     for km, kmi in _keymaps:
         km.keymap_items.remove(kmi)
