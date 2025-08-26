@@ -33,15 +33,15 @@ class WFCGrid:
         ntiles = len(tiles)
 
         # makes a list of sets of all the tiles for each cell in the grid 
-        # (each cell is a set of all the tiles that can be placed in that cell)
+        # (each cell is a set of all the possible tiles that can be placed in that cell)
         # there are size_x * size_y * size_z cells in the grid (represented by the for loop)
-        self.cells: List[Set[int]] = [set(range(ntiles)) for _ in range(size_x * size_y * size_z)]
+        self.possible_tiles_for_cells: List[Set[int]] = [set(range(ntiles)) for _ in range(size_x * size_y * size_z)]
 
         # makes a list of None for each cell in the grid (represented by the for loop)
         # (each cell is a None if it has not been collapsed yet... think schrodinger's cat ^^)
         self.collapsed: List[Optional[int]] = [None] * (size_x * size_y * size_z)
 
-    def index(self, x, y, z) -> int:
+    def index_of_cell(self, x, y, z) -> int:
         '''
         Returns the index of the cell in a given x, y, z position in the grid
         '''
@@ -129,7 +129,7 @@ class WFCGrid:
         idx = self.rng.choice(candidates)
 
         # get the list of possible tiles for the chosen cell
-        options = list(self.cells[idx])
+        options = list(self.possible_tiles_for_cells[idx])
 
         # get the weights for each possible tile
         weights = [self.tiles[o].weight for o in options]
@@ -150,33 +150,74 @@ class WFCGrid:
         return idx
 
     def propagate(self) -> bool:
+        '''
+        Propagates the information from the collapsed cells to the neighboring cells in order to collapse more cells accordingly
+        This is done by checking if the possible tiles for the neighbor are compatible with the possible tiles for the current cell
+        The process is repeated until all cells are collapsed or the grid is not solvable
+        This is a form of constraint propagation
+        '''
+        # q is a queue of the indices of the cells that have been collapsed
         q = deque()
+
+        # for each cell in the grid, if the cell is collapsed, add the index of the cell to the queue
         for idx, choice in enumerate(self.collapsed):
             if choice is not None:
                 q.append(idx)
+
+        # while there are cells in the queue,
         while q:
+            # pop the first cell off the queue
             idx = q.popleft()
+
+            # get the x, y, z coordinates of the cell
             x = idx % self.sx
             y = (idx // self.sx) % self.sy
             z = idx // (self.sx * self.sy)
+
+            # for each neighbor of the cell
             for direction, (nx, ny, nz) in self.neighbors(x, y, z):
-                nidx = self.index(nx, ny, nz)
-                before = set(self.cells[nidx])
-                if not before:
+                # get the index of the neighbor
+                neighbor_idx = self.index_of_cell(nx, ny, nz)
+
+                # get the set of possible tiles for the neighbor
+                possible_tiles_for_neighbor_cell = set(self.possible_tiles_for_cells[neighbor_idx])
+
+                # if the neighbor has no possible tiles, return False; the grid is not solvable
+                if not possible_tiles_for_neighbor_cell:
                     return False
-                possible_here = self.cells[idx]
+
+                # get the set of possible tiles for the current cell
+                possible_tiles_for_cell = self.possible_tiles_for_cells[idx]
+
+                # create an empty set for allowed tiles for the neighbor
                 allowed_for_neighbor = set()
-                for th in possible_here:
+
+                # for each possible tile for the current cell,
+                for th in possible_tiles_for_cell:
+                    # add the set of allowed tiles for the neighbor to the allowed_for_neighbor set
                     allowed_for_neighbor.update(self.adj[direction][th])
-                newset = before.intersection(allowed_for_neighbor)
-                if not newset:
+
+                # get the intersection of the possible tiles for the neighbor and the allowed tiles for the neighbor
+                tiles_in_common = possible_tiles_for_neighbor_cell.intersection(allowed_for_neighbor)
+
+                # if the intersection is empty, return False; the grid is not solvable
+                if not tiles_in_common:
                     return False
-                if newset != before:
-                    self.cells[nidx] = newset
-                    if len(newset) == 1 and self.collapsed[nidx] is None:
-                        only = next(iter(newset))
-                        self.collapsed[nidx] = only
-                    q.append(nidx)
+
+                # if the intersection is not equal to the set of possible tiles for the neighbor,
+                if tiles_in_common != possible_tiles_for_neighbor_cell:
+                    # add the intersection to the set of possible tiles for the neighbor
+                    self.possible_tiles_for_cells[neighbor_idx] = tiles_in_common
+
+                    # if the intersection has only one tile, and the neighbor is not collapsed,
+                    if len(tiles_in_common) == 1 and self.collapsed[neighbor_idx] is None:
+                        # collapse the neighbor into the only possible tile
+                        self.collapsed[neighbor_idx] = next(iter(tiles_in_common))
+
+                    # add the neighbor to the queue
+                    q.append(neighbor_idx)
+
+        # return True if the grid is solvable
         return True
 
     def is_solved(self) -> bool:
