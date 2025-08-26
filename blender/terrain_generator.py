@@ -33,22 +33,26 @@ def generate(
             x = idx % grid.sx 
             y = (idx // grid.sx) % grid.sy
             z = idx // (grid.sx * grid.sy)
-            tile_idx = next(iter(grid.cells[idx]))
+            tile_idx = next(iter(grid.possible_tiles_for_cells[idx]))
             step_callback((x, y, z), tile_idx)
 
         # If the propagation fails, break the loop
         if not grid.propagate():
             break
 
+    # Get the placements of the tiles that were collapsed in the grid
     placements = []
     for z in range(sz):
         for y in range(sy):
             for x in range(sx):
-                idx = grid.index(x, y, z)
-                if grid.collapsed[idx] is None or len(grid.cells[idx]) != 1:
+                idx = grid.index_of_cell(x, y, z)
+                if grid.collapsed[idx] is None or len(grid.possible_tiles_for_cells[idx]) != 1:
                     continue
-                tile_idx = next(iter(grid.cells[idx]))
+                tile_idx = next(iter(grid.possible_tiles_for_cells[idx]))
                 placements.append((x, y, z, tile_idx))
+
+    # Return the placements of the tiles that were collapsed in the grid
+    # plus the original tiles list and the size of the terrain
     return {
         "placements": placements,
         "tiles": tiles,

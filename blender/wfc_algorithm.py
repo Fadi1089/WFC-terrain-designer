@@ -82,7 +82,7 @@ class WFCGrid:
         # Add the index of the cell to the candidates list.
         # If the number of propable tiles is equal to the current min_len, add the index of the cell to the candidates list.
         # If the number of propable tiles is less than the current min_len, update min_len and reset the candidates list to only include the current cell.
-        for idx, propable_tiles in enumerate(self.cells):
+        for idx, propable_tiles in enumerate(self.possible_tiles_for_cells):
             # get the number of propable tiles for the current cell
             num_of_propable_tiles = len(propable_tiles)
 
@@ -118,7 +118,7 @@ class WFCGrid:
         # if there are no cells with the lowest entropy,
         # then get the list of all cells that are not collapsed and have more than one possible tile
         if not candidates:
-            candidates = [i for i, propable_tiles in enumerate(self.cells) if self.collapsed[i] is None and len(propable_tiles) > 1]
+            candidates = [i for i, propable_tiles in enumerate(self.possible_tiles_for_cells) if self.collapsed[i] is None and len(propable_tiles) > 1]
 
             # if there are STILL no cells with the lowest entropy,
             # then return None
@@ -143,7 +143,7 @@ class WFCGrid:
         if sum(weights) <= 0:
             weights = [1.0 for _ in weights]
         choice = self.rng.choices(options, weights=weights, k=1)[0]
-        self.cells[idx] = {choice}
+        self.possible_tiles_for_cells[idx] = {choice}
         self.collapsed[idx] = choice
 
         # return the index of the tile (that's been chosen based on the weights) for the randdomly chosen cell
@@ -225,4 +225,4 @@ class WFCGrid:
         Returns True if the grid is solved (all cells have only one option, and therefore the grid is fully collapsed)
         '''
         # checks if the length of all the sets (each cell) is 1 (all cells have only one option as a tile)
-        return all(len(propable_tiles) == 1 for propable_tiles in self.cells)
+        return all(len(propable_tiles) == 1 for propable_tiles in self.possible_tiles_for_cells)

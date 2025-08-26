@@ -51,7 +51,7 @@ class MARSWFC_OT_AddProps(bpy.types.Operator):
     tile_idx always means "which tile type"
     grid_idx always means "which grid position"
     tile always means "the WFCTile object"
-    bases always means "list of available tile types"
+    tiles always means "list of available tile types"
     '''
 
     def execute(self, context):
@@ -95,7 +95,7 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
 
         # Read all tile objects from the collection
         try:
-            bases = read_bases_from_collection(collection)
+            tiles = read_bases_from_collection(collection)
         except Exception as e:
             self.report({'ERROR'}, f"Tile reading failed. Identified the following cause: {e}")
             return {'CANCELLED'}
@@ -126,8 +126,8 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
 
         # a callback function to be called at each step of the generation process
         def step_callback(pos: Tuple[int, int, int], tile_idx: int):
-            # If the bases are not yet created, return None
-            if bases is None:
+            # If the tiles are not yet created, return None
+            if tiles is None:
                 return
 
             # Get the coordinates (position) of the tile
@@ -139,9 +139,9 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             # Key in the instantiated_objects_map dictionary
             grid_idx = x + cfg.size_x * (y + cfg.size_y * z)
 
-            # Get the tile from the bases using the tile_idx
+            # Get the tile from the tiles using the tile_idx
             # This represents which tile type was chosen for this position
-            tile: WFCTile = bases[tile_idx]
+            tile: WFCTile = tiles[tile_idx]
 
             # Get the source object from the tile
             src_obj = bpy.data.objects.get(tile.name)
@@ -174,11 +174,11 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
         based on a heightmap (either an image or texture).
         Essentially a "smart placement system" that makes the terrain follow elevation patterns.
         '''
-        guidance: Optional[Callable] = build_guidance_from_settings(cfg, bases)
+        guidance: Optional[Callable] = build_guidance_from_settings(cfg, tiles)
 
         # Generate the terrain using the WFC algorithm
         result = generate(
-            bases=bases,
+            tiles=tiles,
             size=(cfg.size_x, cfg.size_y, cfg.size_z),
             rng=rng,
             guidance=guidance,
@@ -193,7 +193,7 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
             grid_idx = x + cfg.size_x * (y + cfg.size_y * z)
             if grid_idx in instantiated_objects_map:
                 continue
-            tile: WFCTile = result["bases"][tile_idx]
+            tile: WFCTile = result["tiles"][tile_idx]
             src_obj = bpy.data.objects.get(tile.name)
             if src_obj is None:
                 continue
