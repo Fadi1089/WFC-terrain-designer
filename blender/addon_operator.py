@@ -191,18 +191,18 @@ class MARSWFC_OT_Generate(bpy.types.Operator):
         # TODO : Make the same but for ONLY the first layer (z = 0), while leaving the rest of the z layers empty
         self.report({"INFO"}, f"len(result['placements']): {len(result['placements'])}")
         
-        top_z = cfg.size_z - 1
-        top_layer_indices = (i for i in result["placements"] if i[2] == top_z)
-        
-        for (x, y, z, tile_idx) in top_layer_indices:
-            grid_idx = x + cfg.size_x * (y + cfg.size_y * z)
-            if grid_idx in instantiated_objects_map:
-                continue
-            tile: WFCTile = result["tiles"][tile_idx]
-            src_obj = bpy.data.objects.get(tile.name)
-            if src_obj is None:
-                continue
-            instantiate_variant(out_coll, src_obj, tile, (x, y, z), cfg.cell_size)
+        for z_layer in range(cfg.size_z):
+            current_layer_indices = (i for i in result["placements"] if i[2] == z_layer)
+            
+            for (x, y, z, tile_idx) in current_layer_indices:
+                grid_idx = x + cfg.size_x * (y + cfg.size_y * z)
+                if grid_idx in instantiated_objects_map:
+                    continue
+                tile: WFCTile = result["tiles"][tile_idx]
+                src_obj = bpy.data.objects.get(tile.name)
+                if src_obj is None:
+                    continue
+                instantiate_variant(out_coll, src_obj, tile, (x, y, z), cfg.cell_size)
 
         # Instantiate the tiles that were not instantiated during the generation process
         # This is done to ensure that all tiles are instantiated
